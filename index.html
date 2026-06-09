@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radio Taxi Full Express - Panel de Conductor</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css?v=6">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation (Desktop) / Bottom Nav (Mobile) -->
+        <nav class="sidebar">
+            <div class="nav-logo">
+                <img src="logo.png" alt="Logo" class="logo-img">
+                <span>Full<span class="highlight">Express</span></span>
+            </div>
+            <ul class="nav-links">
+                <li class="active" data-tab="dashboard">
+                    <i data-lucide="layout-dashboard"></i>
+                    <span>Panel</span>
+                </li>
+                <li data-tab="transactions">
+                    <i data-lucide="list-collapse"></i>
+                    <span>Transacciones</span>
+                </li>
+                <li data-tab="mileage">
+                    <i data-lucide="milestone"></i>
+                    <span>Kilometraje</span>
+                </li>
+                <li data-tab="statistics">
+                    <i data-lucide="bar-chart-3"></i>
+                    <span>Estadísticas</span>
+                </li>
+                <li data-tab="calendar">
+                    <i data-lucide="calendar"></i>
+                    <span>Calendario</span>
+                </li>
+            </ul>
+            <div class="driver-profile">
+                <div class="profile-img">TX</div>
+                <div class="profile-info">
+                    <p class="profile-name">Conductor Radiotaxi</p>
+                    <p class="profile-status"><span class="status-dot"></span>En Turno</p>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-title">
+                    <h1 id="welcome-text">Buenas tardes, Conductor</h1>
+                    <p class="text-muted" id="current-date">Cargando fecha...</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="btn-custom-tx">
+                        <i data-lucide="plus"></i> Nueva Transacción
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard Tab (Default) -->
+            <div id="tab-dashboard" class="tab-content active">
+                <!-- KPI Indicators Grid -->
+                <section class="kpi-grid">
+                    <div class="kpi-card income">
+                        <div class="kpi-icon">
+                            <i data-lucide="arrow-up-right"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <h3>Ingresos del Día</h3>
+                            <p class="kpi-value" id="kpi-today-income">$0</p>
+                            <span class="kpi-subtext" id="kpi-income-count">0 viajes registrados</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card expense">
+                        <div class="kpi-icon">
+                            <i data-lucide="arrow-down-left"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <h3>Gastos del Día</h3>
+                            <p class="kpi-value" id="kpi-today-expense">$0</p>
+                            <span class="kpi-subtext" id="kpi-expense-count">0 gastos registrados</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card balance">
+                        <div class="kpi-icon">
+                            <i data-lucide="wallet"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <h3>Balance Neto</h3>
+                            <p class="kpi-value" id="kpi-today-balance">$0</p>
+                            <span class="kpi-subtext" id="kpi-balance-status">Turno en progreso</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card fuel-perf">
+                        <div class="kpi-icon">
+                            <i data-lucide="fuel"></i>
+                        </div>
+                        <div class="kpi-details">
+                            <h3>Rendimiento Bencina</h3>
+                            <p class="kpi-value" id="kpi-fuel-performance">$0/km</p>
+                            <span class="kpi-subtext" id="kpi-fuel-subtext">Requiere Km e ingreso bencina</span>
+                        </div>
+                    </div>
+                </section>
+
+                <div class="dashboard-grid">
+                    <!-- Quick Actions Panel -->
+                    <div class="grid-card quick-actions-card">
+                        <h2>Acciones Rápidas</h2>
+                        <div class="quick-actions-container">
+                            <div class="action-group">
+                                <h3>Ingresos Rápidos (Viajes)</h3>
+                                <div class="btn-group">
+                                    <button class="btn btn-quick-income" data-amount="2500">+$2,500</button>
+                                    <button class="btn btn-quick-income" data-amount="3000">+$3,000</button>
+                                </div>
+                            </div>
+                            <div class="action-group">
+                                <h3>Gastos Rápidos</h3>
+                                <div class="btn-group">
+                                    <button class="btn btn-quick-expense" data-amount="10000">-$10,000 <span class="btn-tag">Bencina</span></button>
+                                    <button class="btn btn-quick-expense" data-amount="15000">-$15,000 <span class="btn-tag">Bencina</span></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Daily Mileage Control -->
+                    <div class="grid-card mileage-card">
+                        <h2>Control de Kilometraje de Hoy</h2>
+                        <form id="mileage-form" class="mileage-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="km-initial">Kilometraje Inicial</label>
+                                    <div class="input-icon-wrapper">
+                                        <i data-lucide="gauge-circle"></i>
+                                        <input type="number" id="km-initial" placeholder="Ej. 120500" min="0">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="km-final">Kilometraje Final</label>
+                                    <div class="input-icon-wrapper">
+                                        <i data-lucide="gauge"></i>
+                                        <input type="number" id="km-final" placeholder="Ej. 120680" min="0">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mileage-summary" id="mileage-summary-box">
+                                <div class="summary-item">
+                                    <span class="label">Km Recorridos:</span>
+                                    <span class="value" id="summary-distance">0 km</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">Costo Bencina Hoy:</span>
+                                    <span class="value" id="summary-fuel-cost">$0</span>
+                                </div>
+                                <div class="summary-item highlighted">
+                                    <span class="label">Costo por Km:</span>
+                                    <span class="value" id="summary-cost-per-km">$0/km</span>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-secondary w-100">
+                                <i data-lucide="save"></i> Guardar Kilometraje
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="dashboard-grid second-row">
+                    <!-- Main Chart Preview -->
+                    <div class="grid-card chart-card">
+                        <div class="card-header-flex">
+                            <h2>Resumen de la Semana</h2>
+                            <div class="chart-legend">
+                                <span class="legend-item"><span class="dot green"></span>Ingresos</span>
+                                <span class="legend-item"><span class="dot red"></span>Gastos</span>
+                            </div>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="weeklyFinanceChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Recent Transactions list -->
+                    <div class="grid-card recent-tx-card">
+                        <div class="card-header-flex">
+                            <h2>Transacciones de Hoy</h2>
+                            <button class="btn-text" id="view-all-tx">Ver todas</button>
+                        </div>
+                        <div class="recent-list-container" id="recent-transactions-list">
+                            <!-- Populated by JS -->
+                            <div class="empty-state">
+                                <i data-lucide="receipt"></i>
+                                <p>No hay transacciones registradas hoy</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transactions Tab -->
+            <div id="tab-transactions" class="tab-content">
+                <div class="grid-card full-width">
+                    <div class="card-header-flex">
+                        <h2>Historial Completo de Transacciones</h2>
+                        <div class="filters-container">
+                            <select id="filter-type" class="form-select">
+                                <option value="all">Todos los tipos</option>
+                                <option value="ingreso">Ingresos</option>
+                                <option value="gasto">Gastos</option>
+                            </select>
+                            <select id="filter-category" class="form-select">
+                                <option value="all">Todas las categorías</option>
+                                <option value="Viaje">Viajes</option>
+                                <option value="Bencina">Bencina</option>
+                                <option value="Mantenimiento">Mantenimiento</option>
+                                <option value="Comida">Comida</option>
+                                <option value="Otros">Otros</option>
+                            </select>
+                            <button class="btn btn-danger-outline btn-sm" id="btn-clear-data">
+                                <i data-lucide="trash-2"></i> Reiniciar Datos
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha y Hora</th>
+                                    <th>Tipo</th>
+                                    <th>Categoría</th>
+                                    <th>Descripción</th>
+                                    <th>Monto</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="full-transactions-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mileage Tab -->
+            <div id="tab-mileage" class="tab-content">
+                <div class="grid-card full-width">
+                    <h2>Historial de Kilometraje y Rendimiento</h2>
+                    <p class="text-muted">A continuación se detallan los registros diarios de kilometraje y el costo correspondiente de bencina por kilómetro.</p>
+                    <div class="table-container mt-4">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Km Inicial</th>
+                                    <th>Km Final</th>
+                                    <th>Distancia Recorrida</th>
+                                    <th>Gasto Bencina</th>
+                                    <th>Costo de Bencina por Km</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mileage-history-table-body">
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Tab -->
+            <div id="tab-statistics" class="tab-content">
+                <div class="dashboard-grid">
+                    <div class="grid-card">
+                        <h2>Distribución de Gastos</h2>
+                        <div class="chart-wrapper doughnut">
+                            <canvas id="expenseCategoryChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="grid-card">
+                        <h2>Tendencia de Rendimiento ($/km)</h2>
+                        <div class="chart-wrapper">
+                            <canvas id="fuelPerformanceChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid-card full-width mt-4">
+                    <h2>Estadísticas Financieras Globales</h2>
+                    <div class="stats-summary-grid">
+                        <div class="stat-box">
+                            <span class="stat-label">Ingresos Totales</span>
+                            <span class="stat-number text-success" id="stat-total-income">$0</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Gastos Totales</span>
+                            <span class="stat-number text-danger" id="stat-total-expense">$0</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Balance Neto Total</span>
+                            <span class="stat-number" id="stat-total-balance">$0</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Kilómetros Totales Recorridos</span>
+                            <span class="stat-number text-primary" id="stat-total-km">0 km</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-label">Costo Promedio Bencina/Km</span>
+                            <span class="stat-number text-warning" id="stat-avg-performance">$0/km</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calendar Tab -->
+            <div id="tab-calendar" class="tab-content">
+                <div class="calendar-layout-grid">
+                    <!-- Calendar Render Card -->
+                    <div class="grid-card calendar-card">
+                        <div class="calendar-header-controls">
+                            <button class="btn btn-secondary btn-icon-only" id="prev-month-btn">
+                                <i data-lucide="chevron-left"></i>
+                            </button>
+                            <h2 id="calendar-month-year">Junio 2026</h2>
+                            <button class="btn btn-secondary btn-icon-only" id="next-month-btn">
+                                <i data-lucide="chevron-right"></i>
+                            </button>
+                        </div>
+                        <div class="calendar-days-week">
+                            <span>Lun</span>
+                            <span>Mar</span>
+                            <span>Mié</span>
+                            <span>Jue</span>
+                            <span>Vie</span>
+                            <span>Sáb</span>
+                            <span>Dom</span>
+                        </div>
+                        <div class="calendar-grid-cells" id="calendar-days-grid">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Daily Summary Details Card -->
+                    <div class="grid-card calendar-details-card" id="calendar-day-summary-card">
+                        <div class="details-header">
+                            <h2 id="selected-day-title">Resumen del Día</h2>
+                            <span class="selected-date-badge" id="selected-day-badge">Selecciona un día</span>
+                        </div>
+                        <div class="details-body" id="selected-day-body">
+                            <div class="empty-state">
+                                <i data-lucide="calendar-days"></i>
+                                <p>Haz clic en cualquier día del calendario para ver el resumen detallado</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Custom Transaction Modal -->
+    <div class="modal-backdrop" id="tx-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Nueva Transacción</h2>
+                <button class="btn-close" id="btn-close-modal"><i data-lucide="x"></i></button>
+            </div>
+            <form id="custom-tx-form">
+                <div class="form-group">
+                    <label>Tipo de Transacción</label>
+                    <div class="toggle-group">
+                        <input type="radio" id="type-income" name="tx-type" value="ingreso" checked>
+                        <label for="type-income" class="toggle-btn toggle-left">Ingreso</label>
+                        
+                        <input type="radio" id="type-expense" name="tx-type" value="gasto">
+                        <label for="type-expense" class="toggle-btn toggle-right">Gasto</label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="tx-amount">Monto ($)</label>
+                    <input type="number" id="tx-amount" placeholder="Ej. 5000" required min="1">
+                </div>
+                <div class="form-group">
+                    <label for="tx-category">Categoría</label>
+                    <select id="tx-category" class="form-select" required>
+                        <!-- Options will update dynamically based on type -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="tx-date">Fecha</label>
+                    <input type="date" id="tx-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="tx-desc">Descripción / Notas (Opcional)</label>
+                    <input type="text" id="tx-desc" placeholder="Ej. Viaje centro a aeropuerto">
+                </div>
+                <button type="submit" class="btn btn-primary w-100 mt-4">Guardar Registro</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="app.js?v=6"></script>
+</body>
+</html>

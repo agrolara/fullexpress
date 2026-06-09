@@ -1,0 +1,12 @@
+{
+  "name": "radiotaxi-control",
+  "version": "1.0.0",
+  "description": "Aplicación de control para conductores de Radiotaxi",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx -y http-server -p 3000 -o"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
