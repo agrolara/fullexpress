@@ -1353,6 +1353,7 @@ body::after {
         border-top: 1px solid var(--border-color);
         box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
         border-radius: 0;
+        z-index: 1000;
     }
     
     .nav-logo, .driver-profile {
@@ -1383,7 +1384,7 @@ body::after {
     }
     
     .main-content {
-        padding: 1.25rem;
+        padding: 1rem;
         padding-bottom: 5rem; /* Allow space for bottom nav */
     }
     
@@ -1429,11 +1430,102 @@ body::after {
     }
 }
 
+@media (max-width: 500px) {
+    .nav-links li span {
+        display: none !important;
+    }
+    .nav-links li {
+        padding: 0.75rem 0.25rem !important;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .nav-links li i {
+        width: 24px !important;
+        height: 24px !important;
+    }
+    .sidebar {
+        padding: 0.5rem 0 !important;
+    }
+}
+
 @media (max-width: 480px) {
+    .main-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+        text-align: center;
+    }
+    .main-header h1 {
+        font-size: 1.5rem;
+    }
+    .header-actions {
+        width: 100%;
+    }
+    .header-actions .btn {
+        width: 100%;
+    }
     .kpi-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 0.5rem !important;
+    }
+    .kpi-card {
+        padding: 0.75rem 0.5rem !important;
+        gap: 0.35rem !important;
+        flex-direction: column;
+        text-align: center;
+    }
+    .kpi-icon {
+        width: 32px !important;
+        height: 32px !important;
+        margin: 0 auto;
+    }
+    .kpi-value {
+        font-size: 1rem !important;
+    }
+    .kpi-details h3 {
+        font-size: 0.7rem !important;
+        margin-top: 0.25rem;
+    }
+    .kpi-subtext {
+        display: none !important;
+    }
+    .btn-group {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .btn-quick-income, .btn-quick-expense {
+        padding: 0.8rem 0.5rem !important;
+        font-size: 0.85rem !important;
+        flex-direction: column;
+        gap: 0.1rem;
+    }
+    .btn-tag {
+        margin-top: 0.1rem;
     }
     .form-row {
         flex-direction: column;
     }
+    .mileage-summary {
+        flex-direction: column;
+        gap: 0.5rem;
+        padding: 0.75rem;
+    }
+    .summary-item {
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        padding-bottom: 0.25rem;
+    }
+    .summary-item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+    .modal-content {
+        padding: 1.25rem !important;
+        max-width: 95% !important;
+        margin: 0 auto;
+    }
 }
+

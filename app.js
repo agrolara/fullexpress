@@ -1320,4 +1320,12 @@ function selectCalendarDay(dateStr) {
     });
     
     lucide.createIcons();
+    
+    // Auto-scroll to summary details on mobile screens
+    if (window.innerWidth <= 991) {
+        const summaryCard = document.getElementById('calendar-day-summary-card');
+        if (summaryCard) {
+            summaryCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
 }
