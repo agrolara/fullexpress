@@ -17,5 +17,5 @@
 - [x] Actualizar la tabla del historial de kilometraje en `index.html` y `app.js` con las métricas de combustible
 - [x] Mostrar el resumen de combustible del día en los detalles del calendario
 - [x] Verificar el correcto funcionamiento y persistencia local de los cálculos
-- [ ] Realizar commit, push y despliegue del contenedor actualizado en el VPS
+- [x] Realizar commit, push y despliegue del contenedor actualizado en el VPS
 
