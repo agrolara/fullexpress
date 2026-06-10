@@ -50,6 +50,11 @@ let weeklyFinanceChart = null;
 let expenseCategoryChart = null;
 let fuelPerformanceChart = null;
 
+// Period & PWA Global States
+let deferredPrompt = null;
+let statsActivePeriod = 'semana'; // 'semana', 'mes', 'historico'
+let dashboardChartPeriod = 'week'; // 'week', 'month'
+
 // DOM Elements
 // DOM Elements (evaluated dynamically using getters to prevent null reference bugs)
 const elements = {
@@ -111,6 +116,8 @@ const elements = {
     get fuelSettingsForm() { return document.getElementById('fuel-settings-form'); },
     get fuelPriceLiterInput() { return document.getElementById('fuel-price-liter'); },
     get fuelEfficiencyInput() { return document.getElementById('fuel-efficiency'); },
+    get settingsSound() { return document.getElementById('settings-sound'); },
+    get settingsVibration() { return document.getElementById('settings-vibration'); },
     
     // Stats Globals
     get statTotalIncome() { return document.getElementById('stat-total-income'); },
@@ -118,13 +125,37 @@ const elements = {
     get statTotalBalance() { return document.getElementById('stat-total-balance'); },
     get statTotalKm() { return document.getElementById('stat-total-km'); },
     get statAvgPerf() { return document.getElementById('stat-avg-performance'); },
+    get statsGlobalTitle() { return document.getElementById('stats-global-title'); },
+    get btnFilterPeriods() { return document.querySelectorAll('.btn-filter-period'); },
     
     // Modal
     get txModal() { return document.getElementById('tx-modal'); },
     get btnCloseModal() { return document.getElementById('btn-close-modal'); },
     get customTxForm() { return document.getElementById('custom-tx-form'); },
     get modalTxCategory() { return document.getElementById('tx-category'); },
-    get modalTxDate() { return document.getElementById('tx-date'); }
+    get modalTxDate() { return document.getElementById('tx-date'); },
+
+    // Theme & Installation
+    get btnThemeToggle() { return document.getElementById('btn-theme-toggle'); },
+    get btnInstallApp() { return document.getElementById('btn-install-app'); },
+    get sidebarInstallLi() { return document.getElementById('sidebar-install-li'); },
+
+    // Period Summaries (Dashboard)
+    get weekIncome() { return document.getElementById('week-income'); },
+    get weekExpense() { return document.getElementById('week-expense'); },
+    get weekBalance() { return document.getElementById('week-balance'); },
+    get weekDistance() { return document.getElementById('week-distance'); },
+    get weekFuelCost() { return document.getElementById('week-fuel-cost'); },
+    get monthIncome() { return document.getElementById('month-income'); },
+    get monthExpense() { return document.getElementById('month-expense'); },
+    get monthBalance() { return document.getElementById('month-balance'); },
+    get monthDistance() { return document.getElementById('month-distance'); },
+    get monthFuelCost() { return document.getElementById('month-fuel-cost'); },
+
+    // Chart Toggles (Dashboard)
+    get btnChartWeek() { return document.getElementById('btn-chart-week'); },
+    get btnChartMonth() { return document.getElementById('btn-chart-month'); },
+    get chartTitleText() { return document.getElementById('chart-title-text'); }
 };
 
 // Initialize Application
@@ -134,6 +165,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Load data from LocalStorage or seed with mockup data
     loadState();
+
+    // Apply last selected theme
+    initTheme();
     
     // Initialize icons
     lucide.createIcons();
@@ -144,8 +178,220 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set modal date default to today
     elements.modalTxDate.value = getTodayString();
     
+    // Sync settings UI checkboxes
+    initSettingsUI();
+    
+    // Register Service Worker
+    registerServiceWorker();
+
     // Render everything
     updateUI();
+});
+
+// Sound synthesis using Web Audio API (Zero network calls, 100% offline)
+function playAudio(type) {
+    if (!state.settings || state.settings.sound_enabled === false) return;
+    
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        
+        if (type === 'income') {
+            // Success/Coin sound (Double upward chime)
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.08, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+            
+            osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+            osc.start(ctx.currentTime);
+            
+            osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08);
+            osc.stop(ctx.currentTime + 0.35);
+        } else if (type === 'expense') {
+            // Expense sound (Swoosh/descending sound)
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.type = 'triangle';
+            gain.gain.setValueAtTime(0.1, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+            
+            osc.frequency.setValueAtTime(350, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(150, ctx.currentTime + 0.2);
+            
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.25);
+        } else if (type === 'click') {
+            // Very short tick/pop
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            osc.type = 'sine';
+            gain.gain.setValueAtTime(0.03, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+            
+            osc.frequency.setValueAtTime(950, ctx.currentTime);
+            
+            osc.start(ctx.currentTime);
+            osc.stop(ctx.currentTime + 0.04);
+        } else if (type === 'error') {
+            // Double low beep
+            const osc1 = ctx.createOscillator();
+            const gain1 = ctx.createGain();
+            osc1.connect(gain1);
+            gain1.connect(ctx.destination);
+            osc1.type = 'sawtooth';
+            gain1.gain.setValueAtTime(0.06, ctx.currentTime);
+            gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+            osc1.frequency.setValueAtTime(180, ctx.currentTime);
+            osc1.start(ctx.currentTime);
+            osc1.stop(ctx.currentTime + 0.12);
+            
+            const osc2 = ctx.createOscillator();
+            const gain2 = ctx.createGain();
+            osc2.connect(gain2);
+            gain2.connect(ctx.destination);
+            osc2.type = 'sawtooth';
+            gain2.gain.setValueAtTime(0.06, ctx.currentTime + 0.15);
+            gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.27);
+            osc2.frequency.setValueAtTime(180, ctx.currentTime + 0.15);
+            osc2.start(ctx.currentTime + 0.15);
+            osc2.stop(ctx.currentTime + 0.27);
+        }
+    } catch (e) {
+        console.error('Error playing audio:', e);
+    }
+}
+
+// Vibration helper (Vibrates only if supported and enabled)
+function vibrate(pattern) {
+    if (!state.settings || state.settings.vibration_enabled === false) return;
+    if ('vibrate' in navigator) {
+        try {
+            navigator.vibrate(pattern);
+        } catch (e) {
+            console.warn('Vibration failed:', e);
+        }
+    }
+}
+
+// Register Service Worker for PWA
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registrado con éxito', reg.scope))
+                .catch(err => console.error('Error al registrar Service Worker', err));
+        });
+    }
+}
+
+// Initialize theme from saved settings or system preferences
+function initTheme() {
+    let currentTheme = localStorage.getItem('radiotaxi_theme') || 'dark';
+    
+    // If no preference is set, check system preferences
+    if (!localStorage.getItem('radiotaxi_theme')) {
+        const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+        currentTheme = prefersLight ? 'light' : 'dark';
+    }
+    
+    setTheme(currentTheme);
+}
+
+// Helper to set theme
+function setTheme(theme) {
+    const isLight = theme === 'light';
+    if (isLight) {
+        document.body.classList.add('light-theme');
+    } else {
+        document.body.classList.remove('light-theme');
+    }
+    
+    // Update theme toggle icon
+    const themeBtn = elements.btnThemeToggle;
+    if (themeBtn) {
+        themeBtn.innerHTML = isLight ? '<i data-lucide="sun"></i>' : '<i data-lucide="moon"></i>';
+        lucide.createIcons();
+    }
+    
+    localStorage.setItem('radiotaxi_theme', theme);
+}
+
+// Toggle theme on button click
+function toggleTheme() {
+    const isCurrentlyLight = document.body.classList.contains('light-theme');
+    const newTheme = isCurrentlyLight ? 'dark' : 'light';
+    setTheme(newTheme);
+    
+    // Update active chart colors
+    updateCharts();
+    
+    playAudio('click');
+}
+
+// Sync settings checkboxes with current state
+function initSettingsUI() {
+    if (elements.settingsSound) {
+        elements.settingsSound.checked = state.settings.sound_enabled !== false;
+    }
+    if (elements.settingsVibration) {
+        elements.settingsVibration.checked = state.settings.vibration_enabled !== false;
+    }
+}
+
+// Listen for standard PWA beforeinstallprompt event
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent standard browser banner from showing
+    e.preventDefault();
+    // Stash the event so it can be triggered later
+    deferredPrompt = e;
+    
+    // Show our custom install promotion elements
+    if (elements.btnInstallApp) elements.btnInstallApp.style.display = 'flex';
+    if (elements.sidebarInstallLi) elements.sidebarInstallLi.style.display = 'flex';
+});
+
+// Trigger the installation process
+function installPWA() {
+    if (!deferredPrompt) return;
+    
+    // Show the install prompt
+    deferredPrompt.prompt();
+    
+    // Wait for the user to respond to the prompt
+    deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+            console.log('El conductor aceptó instalar la app');
+        } else {
+            console.log('El conductor rechazó la instalación');
+        }
+        // Reset deferredPrompt
+        deferredPrompt = null;
+        
+        // Hide promotion buttons
+        if (elements.btnInstallApp) elements.btnInstallApp.style.display = 'none';
+        if (elements.sidebarInstallLi) elements.sidebarInstallLi.style.display = 'none';
+    });
+}
+
+// Hide install elements when app is installed
+window.addEventListener('appinstalled', (evt) => {
+    console.log('Radio Taxi Full Express instalado correctamente');
+    deferredPrompt = null;
+    if (elements.btnInstallApp) elements.btnInstallApp.style.display = 'none';
+    if (elements.sidebarInstallLi) elements.sidebarInstallLi.style.display = 'none';
+    showToast('¡Aplicación instalada con éxito!', 'success');
 });
 
 // Actualiza el saludo dinámico según la hora local del dispositivo del conductor
@@ -330,6 +576,10 @@ function setupEventListeners() {
                 renderCalendar();
                 selectCalendarDay(calendarSelectedDateStr);
             }
+            
+            // Audiovisual feedback
+            playAudio('click');
+            vibrate(15);
         });
     });
 
@@ -412,8 +662,14 @@ function setupEventListeners() {
     });
 
     // Filters on transaction tab
-    elements.filterType.addEventListener('change', renderFullTransactionsTable);
-    elements.filterCategory.addEventListener('change', renderFullTransactionsTable);
+    elements.filterType.addEventListener('change', () => {
+        renderFullTransactionsTable();
+        playAudio('click');
+    });
+    elements.filterCategory.addEventListener('change', () => {
+        renderFullTransactionsTable();
+        playAudio('click');
+    });
 
     // Fuel Settings Form Submit
     elements.fuelSettingsForm.addEventListener('submit', (e) => {
@@ -428,8 +684,93 @@ function setupEventListeners() {
             saveState();
             updateUI();
             showToast('Datos restablecidos a los valores iniciales de prueba.', 'warning');
+            playAudio('error');
+            vibrate([100, 50, 100]);
         }
     });
+
+    // PWA Install Button Triggers
+    if (elements.btnInstallApp) {
+        elements.btnInstallApp.addEventListener('click', () => {
+            installPWA();
+            playAudio('click');
+        });
+    }
+    if (elements.sidebarInstallLi) {
+        elements.sidebarInstallLi.addEventListener('click', () => {
+            installPWA();
+            playAudio('click');
+        });
+    }
+
+    // Theme Toggle Button Trigger
+    if (elements.btnThemeToggle) {
+        elements.btnThemeToggle.addEventListener('click', () => {
+            toggleTheme();
+        });
+    }
+
+    // System Settings Checkboxes (Sound & Vibration)
+    if (elements.settingsSound) {
+        elements.settingsSound.addEventListener('change', (e) => {
+            state.settings.sound_enabled = e.target.checked;
+            saveState();
+            if (state.settings.sound_enabled) {
+                playAudio('income');
+            }
+        });
+    }
+    if (elements.settingsVibration) {
+        elements.settingsVibration.addEventListener('change', (e) => {
+            state.settings.vibration_enabled = e.target.checked;
+            saveState();
+            if (state.settings.vibration_enabled) {
+                vibrate(50);
+            }
+        });
+    }
+
+    // Statistics Period Filter Buttons
+    if (elements.btnFilterPeriods) {
+        elements.btnFilterPeriods.forEach(btn => {
+            btn.addEventListener('click', () => {
+                elements.btnFilterPeriods.forEach(b => {
+                    b.classList.remove('active');
+                });
+                btn.classList.add('active');
+                
+                statsActivePeriod = btn.getAttribute('data-period');
+                renderGlobalStatsTable();
+                updateCharts();
+                
+                playAudio('click');
+                vibrate(15);
+            });
+        });
+    }
+
+    // Dashboard Finance Chart Toggle Buttons
+    if (elements.btnChartWeek && elements.btnChartMonth) {
+        elements.btnChartWeek.addEventListener('click', () => {
+            elements.btnChartWeek.classList.add('active');
+            elements.btnChartMonth.classList.remove('active');
+            dashboardChartPeriod = 'week';
+            if (elements.chartTitleText) elements.chartTitleText.innerText = 'Resumen de la Semana';
+            updateCharts();
+            playAudio('click');
+            vibrate(15);
+        });
+
+        elements.btnChartMonth.addEventListener('click', () => {
+            elements.btnChartMonth.classList.add('active');
+            elements.btnChartWeek.classList.remove('active');
+            dashboardChartPeriod = 'month';
+            if (elements.chartTitleText) elements.chartTitleText.innerText = 'Resumen del Mes';
+            updateCharts();
+            playAudio('click');
+            vibrate(15);
+        });
+    }
 }
 
 // Add transaction from quick buttons
@@ -451,6 +792,15 @@ function addQuickTransaction(tipo, categoria, monto, descripcion) {
     
     const moneyFormatted = formatCurrency(monto);
     showToast(`Registrado ${tipo === 'ingreso' ? 'ingreso' : 'gasto'} de ${moneyFormatted} correctamente`, 'success');
+    
+    // Audiovisual feedback
+    if (tipo === 'ingreso') {
+        playAudio('income');
+        vibrate([30, 30, 30]);
+    } else {
+        playAudio('expense');
+        vibrate(40);
+    }
 }
 
 // Update categories in Modal selection based on transaction type
@@ -492,6 +842,15 @@ function saveCustomTransaction() {
     
     updateUI();
     showToast(`Transacción por ${formatCurrency(amount)} guardada`, 'success');
+    
+    // Audiovisual feedback
+    if (type === 'ingreso') {
+        playAudio('income');
+        vibrate([50, 40, 50]);
+    } else {
+        playAudio('expense');
+        vibrate(50);
+    }
 }
 
 // Save Fuel Settings from form
@@ -502,14 +861,23 @@ function saveFuelSettings() {
     if (isNaN(price) || price <= 0) price = 1300;
     if (isNaN(efficiency) || efficiency <= 0) efficiency = 12;
     
+    const soundEnabled = elements.settingsSound ? elements.settingsSound.checked : true;
+    const vibrationEnabled = elements.settingsVibration ? elements.settingsVibration.checked : true;
+    
     state.settings = {
         valor_litro_bencina: price,
-        rendimiento_promedio: efficiency
+        rendimiento_promedio: efficiency,
+        sound_enabled: soundEnabled,
+        vibration_enabled: vibrationEnabled
     };
     
     saveState();
     updateUI();
-    showToast('Parámetros de combustible guardados y saldos proyectados actualizados.', 'success');
+    showToast('Configuraciones guardadas correctamente.', 'success');
+    
+    // Audiovisual feedback
+    playAudio('income');
+    vibrate([40, 40, 40]);
 }
 
 // Get all unique active dates sorted chronologically
@@ -574,6 +942,8 @@ function saveMileageLog() {
     
     if (kmFinal > 0 && kmFinal < kmInitial) {
         showToast('El kilometraje final no puede ser menor al inicial.', 'danger');
+        playAudio('error');
+        vibrate(120);
         return;
     }
     
@@ -586,6 +956,10 @@ function saveMileageLog() {
     saveState();
     updateUI();
     showToast('Kilometraje diario guardado correctamente.', 'success');
+    
+    // Audiovisual feedback
+    playAudio('income');
+    vibrate(60);
 }
 
 // Helper to get carryover fuel surplus from the latest active date before the target date
@@ -638,12 +1012,107 @@ function calculateActiveMileagePerformance() {
     }
 }
 
+// Check if a date string falls in the current week (Monday-Sunday local time)
+function isDateInCurrentWeek(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const today = new Date();
+    
+    // Get Monday of current week
+    const todayDay = today.getDay();
+    const diffToMonday = todayDay === 0 ? -6 : 1 - todayDay;
+    
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    
+    return d >= monday && d <= sunday;
+}
+
+// Check if a date string falls in the current month (local time)
+function isDateInCurrentMonth(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    const today = new Date();
+    return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
+}
+
+// Update Weekly and Monthly summary widgets on Dashboard
+function updatePeriodSummaries() {
+    let weekInc = 0;
+    let weekExp = 0;
+    let weekDist = 0;
+    let weekFuel = 0;
+    
+    let monthInc = 0;
+    let monthExp = 0;
+    let monthDist = 0;
+    let monthFuel = 0;
+    
+    // 1. Transactions
+    state.transactions.forEach(t => {
+        if (isDateInCurrentWeek(t.fecha)) {
+            if (t.tipo === 'ingreso') weekInc += t.monto;
+            else {
+                weekExp += t.monto;
+                if (t.categoria === 'Bencina') weekFuel += t.monto;
+            }
+        }
+        if (isDateInCurrentMonth(t.fecha)) {
+            if (t.tipo === 'ingreso') monthInc += t.monto;
+            else {
+                monthExp += t.monto;
+                if (t.categoria === 'Bencina') monthFuel += t.monto;
+            }
+        }
+    });
+    
+    // 2. Mileage logs
+    Object.keys(state.mileage).forEach(date => {
+        const log = state.mileage[date];
+        const dist = log.km_final > log.km_inicial ? (log.km_final - log.km_inicial) : 0;
+        
+        if (isDateInCurrentWeek(date)) {
+            weekDist += dist;
+        }
+        if (isDateInCurrentMonth(date)) {
+            monthDist += dist;
+        }
+    });
+    
+    // Update elements
+    if (elements.weekIncome) elements.weekIncome.innerText = formatCurrency(weekInc);
+    if (elements.weekExpense) elements.weekExpense.innerText = formatCurrency(weekExp);
+    const weekBal = weekInc - weekExp;
+    if (elements.weekBalance) {
+        elements.weekBalance.innerText = formatCurrency(weekBal);
+        elements.weekBalance.className = `item-value ${weekBal >= 0 ? 'text-success' : 'text-danger'}`;
+    }
+    if (elements.weekDistance) elements.weekDistance.innerText = `${weekDist.toLocaleString('es-CL')} km`;
+    if (elements.weekFuelCost) elements.weekFuelCost.innerText = formatCurrency(weekFuel);
+    
+    if (elements.monthIncome) elements.monthIncome.innerText = formatCurrency(monthInc);
+    if (elements.monthExpense) elements.monthExpense.innerText = formatCurrency(monthExp);
+    const monthBal = monthInc - monthExp;
+    if (elements.monthBalance) {
+        elements.monthBalance.innerText = formatCurrency(monthBal);
+        elements.monthBalance.className = `item-value ${monthBal >= 0 ? 'text-success' : 'text-danger'}`;
+    }
+    if (elements.monthDistance) elements.monthDistance.innerText = `${monthDist.toLocaleString('es-CL')} km`;
+    if (elements.monthFuelCost) elements.monthFuelCost.innerText = formatCurrency(monthFuel);
+}
+
 // Recalculate all numbers and redraw UI elements
 function updateUI() {
     // 1. Recalcular balances de combustible cronológicamente
     updateFuelCalculations();
     
-    // 2. Cargar configuraciones de bencina en los inputs del formulario
+    // 2. Actualizar el panel de resumen semanal y mensual
+    updatePeriodSummaries();
+    
+    // 3. Cargar configuraciones de bencina en los inputs del formulario
     if (elements.fuelPriceLiterInput && elements.fuelEfficiencyInput) {
         elements.fuelPriceLiterInput.value = state.settings.valor_litro_bencina;
         elements.fuelEfficiencyInput.value = state.settings.rendimiento_promedio;
@@ -794,6 +1263,8 @@ function deleteTransaction(id) {
         saveState();
         updateUI();
         showToast('Transacción eliminada con éxito', 'warning');
+        playAudio('error');
+        vibrate([100, 50, 100]);
     }
 }
 
@@ -902,10 +1373,33 @@ function renderMileageTable() {
 
 // Calculate global metrics and render stats page details
 function renderGlobalStatsTable() {
+    let filteredTxs = [...state.transactions];
+    let filteredMileageDates = Object.keys(state.mileage);
+    
+    // Update Stats Title based on period
+    if (elements.statsGlobalTitle) {
+        if (statsActivePeriod === 'semana') {
+            elements.statsGlobalTitle.innerText = 'Estadísticas Financieras: Esta Semana';
+        } else if (statsActivePeriod === 'mes') {
+            elements.statsGlobalTitle.innerText = 'Estadísticas Financieras: Este Mes';
+        } else {
+            elements.statsGlobalTitle.innerText = 'Estadísticas Financieras Históricas';
+        }
+    }
+    
+    // Apply filters
+    if (statsActivePeriod === 'semana') {
+        filteredTxs = state.transactions.filter(t => isDateInCurrentWeek(t.fecha));
+        filteredMileageDates = Object.keys(state.mileage).filter(d => isDateInCurrentWeek(d));
+    } else if (statsActivePeriod === 'mes') {
+        filteredTxs = state.transactions.filter(t => isDateInCurrentMonth(t.fecha));
+        filteredMileageDates = Object.keys(state.mileage).filter(d => isDateInCurrentMonth(d));
+    }
+    
     let totalIncome = 0;
     let totalExpense = 0;
     
-    state.transactions.forEach(t => {
+    filteredTxs.forEach(t => {
         if (t.tipo === 'ingreso') totalIncome += t.monto;
         else totalExpense += t.monto;
     });
@@ -922,7 +1416,7 @@ function renderGlobalStatsTable() {
     let daysWithPerf = 0;
     let totalPerfSum = 0;
     
-    Object.keys(state.mileage).forEach(date => {
+    filteredMileageDates.forEach(date => {
         const log = state.mileage[date];
         const dist = log.km_final > log.km_inicial ? (log.km_final - log.km_inicial) : 0;
         totalKm += dist;
@@ -946,42 +1440,46 @@ function renderGlobalStatsTable() {
 
 // Chart.js updates
 function updateCharts() {
-    // Generate dates list for last 7 days
-    const dates = [];
-    for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        dates.push(d.toISOString().split('T')[0]);
-    }
-    
-    // Gather finance metrics per day
-    const dailyIncome = [];
-    const dailyExpense = [];
-    const dailyPerformance = [];
-    const labels = dates.map(d => formatDateString(d));
-    
-    dates.forEach(date => {
-        const dayTxs = state.transactions.filter(t => t.fecha === date);
-        const inc = dayTxs.filter(t => t.tipo === 'ingreso').reduce((sum, t) => sum + t.monto, 0);
-        const exp = dayTxs.filter(t => t.tipo === 'gasto').reduce((sum, t) => sum + t.monto, 0);
-        dailyIncome.push(inc);
-        dailyExpense.push(exp);
-        
-        // Performance
-        const log = state.mileage[date];
-        const dist = log && log.km_final > log.km_inicial ? (log.km_final - log.km_inicial) : 0;
-        const fuel = dayTxs.filter(t => t.tipo === 'gasto' && t.categoria === 'Bencina').reduce((sum, t) => sum + t.monto, 0);
-        
-        if (dist > 0 && fuel > 0) {
-            dailyPerformance.push(Math.round(fuel / dist));
-        } else {
-            dailyPerformance.push(0); // No record/No performance
-        }
-    });
-    
-    // 1. Weekly Finance Chart (Income vs Expenses)
+    const isLight = document.body.classList.contains('light-theme');
+    const tickColor = isLight ? '#475569' : '#94a3b8';
+    const gridColor = isLight ? 'rgba(15, 23, 42, 0.06)' : 'rgba(255, 255, 255, 0.05)';
+    const legendColor = isLight ? '#0f172a' : '#f8fafc';
+
+    // ==========================================
+    // 1. Dashboard Finance Chart (Income vs Expenses)
+    // ==========================================
     const ctxFinance = document.getElementById('weeklyFinanceChart');
     if (ctxFinance) {
+        // Generate dates list based on selected dashboard chart period
+        const dates = [];
+        const daysToInclude = dashboardChartPeriod === 'week' ? 7 : 30;
+        
+        for (let i = daysToInclude - 1; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            dates.push(d.toISOString().split('T')[0]);
+        }
+        
+        const dailyIncome = [];
+        const dailyExpense = [];
+        const labels = dates.map(d => {
+            if (daysToInclude === 7) {
+                return formatDateString(d);
+            } else {
+                // Return shorter label for 30-day view: "10 Jun"
+                const dateObj = new Date(d + 'T00:00:00');
+                return `${dateObj.getDate()} ${MONTH_NAMES[dateObj.getMonth()].substring(0, 3)}`;
+            }
+        });
+        
+        dates.forEach(date => {
+            const dayTxs = state.transactions.filter(t => t.fecha === date);
+            const inc = dayTxs.filter(t => t.tipo === 'ingreso').reduce((sum, t) => sum + t.monto, 0);
+            const exp = dayTxs.filter(t => t.tipo === 'gasto').reduce((sum, t) => sum + t.monto, 0);
+            dailyIncome.push(inc);
+            dailyExpense.push(exp);
+        });
+        
         if (weeklyFinanceChart) weeklyFinanceChart.destroy();
         
         weeklyFinanceChart = new Chart(ctxFinance, {
@@ -1013,22 +1511,24 @@ function updateCharts() {
                 },
                 scales: {
                     y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+                        grid: { color: gridColor },
+                        ticks: { color: tickColor, font: { family: 'Plus Jakarta Sans' } }
                     },
                     x: {
                         grid: { display: false },
-                        ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+                        ticks: { color: tickColor, font: { family: 'Plus Jakarta Sans' } }
                     }
                 }
             }
         });
     }
     
+    // ==========================================
     // 2. Expense Category Distribution Chart (Doughnut)
+    // ==========================================
     const ctxCategory = document.getElementById('expenseCategoryChart');
     if (ctxCategory) {
-        // Sum expenses by category
+        // Sum expenses by category, filtered by statsActivePeriod
         const expenseCategorySums = {
             'Bencina': 0,
             'Mantenimiento': 0,
@@ -1036,20 +1536,23 @@ function updateCharts() {
             'Otros': 0
         };
         
-        state.transactions
-            .filter(t => t.tipo === 'gasto')
-            .forEach(t => {
-                if (expenseCategorySums.hasOwnProperty(t.categoria)) {
-                    expenseCategorySums[t.categoria] += t.monto;
-                } else {
-                    expenseCategorySums['Otros'] += t.monto;
-                }
-            });
+        let filteredTxs = state.transactions.filter(t => t.tipo === 'gasto');
+        if (statsActivePeriod === 'semana') {
+            filteredTxs = filteredTxs.filter(t => isDateInCurrentWeek(t.fecha));
+        } else if (statsActivePeriod === 'mes') {
+            filteredTxs = filteredTxs.filter(t => isDateInCurrentMonth(t.fecha));
+        }
+        
+        filteredTxs.forEach(t => {
+            if (expenseCategorySums.hasOwnProperty(t.categoria)) {
+                expenseCategorySums[t.categoria] += t.monto;
+            } else {
+                expenseCategorySums['Otros'] += t.monto;
+            }
+        });
             
         const categoriesList = Object.keys(expenseCategorySums);
         const categoriesValues = Object.values(expenseCategorySums);
-        
-        // Only draw if there are expenses
         const hasExpenses = categoriesValues.some(val => val > 0);
         
         if (expenseCategoryChart) expenseCategoryChart.destroy();
@@ -1059,8 +1562,8 @@ function updateCharts() {
             data: {
                 labels: categoriesList,
                 datasets: [{
-                    data: hasExpenses ? categoriesValues : [1], // Draw single gray segment if empty
-                    backgroundColor: hasExpenses ? ['#f59e0b', '#6366f1', '#0ea5e9', '#64748b'] : ['rgba(255,255,255,0.05)'],
+                    data: hasExpenses ? categoriesValues : [1],
+                    backgroundColor: hasExpenses ? ['#f59e0b', '#6366f1', '#0ea5e9', '#64748b'] : [isLight ? 'rgba(15,23,42,0.06)' : 'rgba(255,255,255,0.05)'],
                     borderWidth: 0,
                     hoverOffset: 4
                 }]
@@ -1072,7 +1575,7 @@ function updateCharts() {
                     legend: {
                         position: 'bottom',
                         labels: {
-                            color: '#f8fafc',
+                            color: legendColor,
                             font: { family: 'Plus Jakarta Sans', size: 11 },
                             padding: 15
                         }
@@ -1083,36 +1586,77 @@ function updateCharts() {
         });
     }
     
+    // ==========================================
     // 3. Fuel Performance Line Chart ($/km)
+    // ==========================================
     const ctxPerformance = document.getElementById('fuelPerformanceChart');
     if (ctxPerformance) {
-        if (fuelPerformanceChart) fuelPerformanceChart.destroy();
+        let datesForPerf = [];
+        if (statsActivePeriod === 'semana') {
+            const today = new Date();
+            const todayDay = today.getDay();
+            const diffToMonday = todayDay === 0 ? -6 : 1 - todayDay;
+            const monday = new Date(today);
+            monday.setDate(today.getDate() + diffToMonday);
+            
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                datesForPerf.push(d.toISOString().split('T')[0]);
+            }
+        } else if (statsActivePeriod === 'mes') {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = today.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
+            for (let i = 1; i <= daysInMonth; i++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                datesForPerf.push(dateStr);
+            }
+        } else {
+            datesForPerf = getSortedActivityDates();
+        }
         
-        // Filter out days with 0 performance to draw a cleaner line
         const perfData = [];
         const perfLabels = [];
         
-        for (let i = 0; i < dailyPerformance.length; i++) {
-            if (dailyPerformance[i] > 0) {
-                perfData.push(dailyPerformance[i]);
-                perfLabels.push(labels[i]);
+        datesForPerf.forEach(date => {
+            const log = state.mileage[date];
+            const dist = log && log.km_final > log.km_inicial ? (log.km_final - log.km_inicial) : 0;
+            
+            // Calculate actual fuel spent on that date from transactions
+            const dayTxs = state.transactions.filter(t => t.fecha === date);
+            const fuel = dayTxs.filter(t => t.tipo === 'gasto' && t.categoria === 'Bencina').reduce((sum, t) => sum + t.monto, 0);
+            
+            if (dist > 0 && fuel > 0) {
+                const perf = Math.round(fuel / dist);
+                perfData.push(perf);
+                
+                const dateObj = new Date(date + 'T00:00:00');
+                const label = statsActivePeriod === 'semana' 
+                    ? formatDateString(date).substring(0, 3)
+                    : `${dateObj.getDate()} ${MONTH_NAMES[dateObj.getMonth()].substring(0, 3)}`;
+                perfLabels.push(label);
             }
-        }
+        });
+        
+        if (fuelPerformanceChart) fuelPerformanceChart.destroy();
         
         fuelPerformanceChart = new Chart(ctxPerformance, {
             type: 'line',
             data: {
-                labels: perfLabels.length > 0 ? perfLabels : labels,
+                labels: perfLabels.length > 0 ? perfLabels : (statsActivePeriod === 'semana' ? ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] : ['Sin registros']),
                 datasets: [{
                     label: 'Costo por Km ($/km)',
-                    data: perfData.length > 0 ? perfData : dailyPerformance,
+                    data: perfData.length > 0 ? perfData : [0],
                     borderColor: '#f59e0b',
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    backgroundColor: isLight ? 'rgba(245, 158, 11, 0.06)' : 'rgba(245, 158, 11, 0.1)',
                     borderWidth: 3,
                     fill: true,
                     tension: 0.3,
                     pointBackgroundColor: '#f59e0b',
-                    pointRadius: 4
+                    pointRadius: perfData.length > 0 ? 4 : 0
                 }]
             },
             options: {
@@ -1123,12 +1667,12 @@ function updateCharts() {
                 },
                 scales: {
                     y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+                        grid: { color: gridColor },
+                        ticks: { color: tickColor, font: { family: 'Plus Jakarta Sans' } }
                     },
                     x: {
                         grid: { display: false },
-                        ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+                        ticks: { color: tickColor, font: { family: 'Plus Jakarta Sans' } }
                     }
                 }
             }

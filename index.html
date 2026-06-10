@@ -14,6 +14,12 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Stylesheet -->
     <link rel="stylesheet" href="style.css?v=6">
+    <!-- PWA Meta Tags & Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="FullExpress">
+    <link rel="apple-touch-icon" href="logo.png">
 </head>
 <body>
     <div class="app-container">
@@ -33,8 +39,8 @@
                     <span>Transacciones</span>
                 </li>
                 <li data-tab="mileage">
-                    <i data-lucide="milestone"></i>
-                    <span>Kilometraje</span>
+                    <i data-lucide="settings"></i>
+                    <span>Configuración</span>
                 </li>
                 <li data-tab="statistics">
                     <i data-lucide="bar-chart-3"></i>
@@ -43,6 +49,10 @@
                 <li data-tab="calendar">
                     <i data-lucide="calendar"></i>
                     <span>Calendario</span>
+                </li>
+                <li id="sidebar-install-li" style="display: none; cursor: pointer; background: rgba(99, 102, 241, 0.1); border: 1px dashed var(--primary); border-radius: var(--radius-sm); margin-top: 10px;">
+                    <i data-lucide="download" style="color: var(--primary);"></i>
+                    <span style="color: var(--primary); font-weight: 600;">Instalar App</span>
                 </li>
             </ul>
             <div class="driver-profile">
@@ -63,6 +73,12 @@
                     <p class="text-muted" id="current-date">Cargando fecha...</p>
                 </div>
                 <div class="header-actions">
+                    <button class="btn btn-secondary btn-icon-only" id="btn-theme-toggle" title="Cambiar Tema">
+                        <i data-lucide="moon"></i>
+                    </button>
+                    <button class="btn btn-secondary btn-icon-only" id="btn-install-app" style="display: none;" title="Instalar App">
+                        <i data-lucide="download"></i>
+                    </button>
                     <button class="btn btn-primary" id="btn-custom-tx">
                         <i data-lucide="plus"></i> Nueva Transacción
                     </button>
@@ -190,12 +206,76 @@
                     </div>
                 </div>
 
+                <!-- Resumen Acumulado (Semanal y Mensual) -->
+                <div class="grid-card period-summary-card" style="margin-bottom: 1.5rem;">
+                    <div class="card-header-flex">
+                        <h2>Resumen Acumulado</h2>
+                        <span class="text-muted" style="font-size: 0.8rem;">Cálculos automáticos en base a tus registros</span>
+                    </div>
+                    <div class="period-summary-grid">
+                        <div class="period-summary-column">
+                            <h3>Esta Semana</h3>
+                            <div class="period-summary-content">
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="arrow-up-right" style="color: var(--success); width: 16px; height: 16px;"></i> Ingresos</span>
+                                    <span class="item-value text-success" id="week-income">$0</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="arrow-down-left" style="color: var(--danger); width: 16px; height: 16px;"></i> Gastos</span>
+                                    <span class="item-value text-danger" id="week-expense">$0</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="wallet" style="color: var(--primary); width: 16px; height: 16px;"></i> Balance Neto</span>
+                                    <span class="item-value" id="week-balance">$0</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="milestone" style="color: var(--info); width: 16px; height: 16px;"></i> Distancia</span>
+                                    <span class="item-value" id="week-distance">0 km</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="fuel" style="color: var(--warning); width: 16px; height: 16px;"></i> Costo Combustible</span>
+                                    <span class="item-value" id="week-fuel-cost">$0</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="period-summary-column">
+                            <h3>Este Mes</h3>
+                            <div class="period-summary-content">
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="arrow-up-right" style="color: var(--success); width: 16px; height: 16px;"></i> Ingresos</span>
+                                    <span class="item-value text-success" id="month-income">$0</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="arrow-down-left" style="color: var(--danger); width: 16px; height: 16px;"></i> Gastos</span>
+                                    <span class="item-value text-danger" id="month-expense">$0</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="wallet" style="color: var(--primary); width: 16px; height: 16px;"></i> Balance Neto</span>
+                                    <span class="item-value" id="month-balance">$0</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="milestone" style="color: var(--info); width: 16px; height: 16px;"></i> Distancia</span>
+                                    <span class="item-value" id="month-distance">0 km</span>
+                                </div>
+                                <div class="period-summary-item">
+                                    <span class="item-label"><i data-lucide="fuel" style="color: var(--warning); width: 16px; height: 16px;"></i> Costo Combustible</span>
+                                    <span class="item-value" id="month-fuel-cost">$0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="dashboard-grid second-row">
                     <!-- Main Chart Preview -->
                     <div class="grid-card chart-card">
                         <div class="card-header-flex">
-                            <h2>Resumen de la Semana</h2>
-                            <div class="chart-legend">
+                            <h2 id="chart-title-text">Resumen de la Semana</h2>
+                            <div class="toggle-group-small" style="margin-left: 1rem;">
+                                <button class="btn-toggle-small active" id="btn-chart-week">Semana</button>
+                                <button class="btn-toggle-small" id="btn-chart-month">Mes</button>
+                            </div>
+                            <div class="chart-legend" style="margin-left: auto;">
                                 <span class="legend-item"><span class="dot green"></span>Ingresos</span>
                                 <span class="legend-item"><span class="dot red"></span>Gastos</span>
                             </div>
@@ -268,10 +348,10 @@
 
             <!-- Mileage Tab -->
             <div id="tab-mileage" class="tab-content">
-                <!-- Fuel Settings Card -->
+                <!-- Fuel & System Settings Card -->
                 <div class="grid-card full-width" style="margin-bottom: 1.5rem;">
-                    <h2>Configuración de Combustible</h2>
-                    <p class="text-muted">Configura los valores de bencina y rendimiento para automatizar el cálculo de consumo diario y traspaso de saldos.</p>
+                    <h2>Configuración de Sistema y Combustible</h2>
+                    <p class="text-muted">Ajusta los parámetros de combustible para estimar consumos, y personaliza el feedback auditivo y táctil de la aplicación.</p>
                     <form id="fuel-settings-form" style="margin-top: 1.25rem;">
                         <div class="form-row">
                             <div class="form-group">
@@ -289,8 +369,24 @@
                                 </div>
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">
-                            <i data-lucide="save"></i> Guardar Parámetros
+                        <div class="form-row" style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 0.65rem; cursor: pointer; user-select: none; font-weight: 500;">
+                                    <input type="checkbox" id="settings-sound" checked style="width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer;">
+                                    <span>Activar Efectos de Sonido</span>
+                                </label>
+                                <p class="text-muted" style="margin-top: 0.25rem; font-size: 0.8rem; padding-left: 1.8rem;">Emite sonidos al agregar transacciones, navegar y realizar operaciones.</p>
+                            </div>
+                            <div class="form-group">
+                                <label style="display: flex; align-items: center; gap: 0.65rem; cursor: pointer; user-select: none; font-weight: 500;">
+                                    <input type="checkbox" id="settings-vibration" checked style="width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer;">
+                                    <span>Activar Vibración (Feedback Háptico)</span>
+                                </label>
+                                <p class="text-muted" style="margin-top: 0.25rem; font-size: 0.8rem; padding-left: 1.8rem;">Vibra en dispositivos móviles compatibles al guardar o presionar botones.</p>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1.5rem;">
+                            <i data-lucide="save"></i> Guardar Configuración
                         </button>
                     </form>
                 </div>
@@ -323,6 +419,11 @@
 
             <!-- Statistics Tab -->
             <div id="tab-statistics" class="tab-content">
+                <div class="stats-filter-bar">
+                    <button class="btn-filter-period active" data-period="semana">Esta Semana</button>
+                    <button class="btn-filter-period" data-period="mes">Este Mes</button>
+                    <button class="btn-filter-period" data-period="historico">Todo el Historial</button>
+                </div>
                 <div class="dashboard-grid">
                     <div class="grid-card">
                         <h2>Distribución de Gastos</h2>
@@ -338,22 +439,22 @@
                     </div>
                 </div>
                 <div class="grid-card full-width mt-4">
-                    <h2>Estadísticas Financieras Globales</h2>
+                    <h2 id="stats-global-title">Estadísticas Financieras</h2>
                     <div class="stats-summary-grid">
                         <div class="stat-box">
-                            <span class="stat-label">Ingresos Totales</span>
+                            <span class="stat-label">Ingresos</span>
                             <span class="stat-number text-success" id="stat-total-income">$0</span>
                         </div>
                         <div class="stat-box">
-                            <span class="stat-label">Gastos Totales</span>
+                            <span class="stat-label">Gastos</span>
                             <span class="stat-number text-danger" id="stat-total-expense">$0</span>
                         </div>
                         <div class="stat-box">
-                            <span class="stat-label">Balance Neto Total</span>
+                            <span class="stat-label">Balance Neto</span>
                             <span class="stat-number" id="stat-total-balance">$0</span>
                         </div>
                         <div class="stat-box">
-                            <span class="stat-label">Kilómetros Totales Recorridos</span>
+                            <span class="stat-label">Kilómetros Recorridos</span>
                             <span class="stat-number text-primary" id="stat-total-km">0 km</span>
                         </div>
                         <div class="stat-box">
