@@ -20,7 +20,12 @@ window.addEventListener('error', function(e) {
 // Application State
 let state = {
     transactions: [],
-    mileage: {} // Format: { "YYYY-MM-DD": { km_inicial: X, km_final: Y } }
+    mileage: {}, // Format: { "YYYY-MM-DD": { km_inicial: X, km_final: Y } }
+    settings: {
+        valor_litro_bencina: 1300,
+        rendimiento_promedio: 12
+    },
+    calculatedFuel: {} // Cache de cálculos de combustible en tiempo de ejecución
 };
 
 // Calendar Navigation State
@@ -82,6 +87,9 @@ const elements = {
     get kmFinalInput() { return document.getElementById('km-final'); },
     get summaryDistance() { return document.getElementById('summary-distance'); },
     get summaryFuelCost() { return document.getElementById('summary-fuel-cost'); },
+    get summaryFuelCarryover() { return document.getElementById('summary-fuel-carryover'); },
+    get summaryFuelPurchased() { return document.getElementById('summary-fuel-purchased'); },
+    get summaryFuelSurplus() { return document.getElementById('summary-fuel-surplus'); },
     get summaryCostPerKm() { return document.getElementById('summary-cost-per-km'); },
     
     // Quick Buttons
@@ -98,6 +106,11 @@ const elements = {
     
     // Mileage History
     get mileageTableBody() { return document.getElementById('mileage-history-table-body'); },
+    
+    // Fuel Settings
+    get fuelSettingsForm() { return document.getElementById('fuel-settings-form'); },
+    get fuelPriceLiterInput() { return document.getElementById('fuel-price-liter'); },
+    get fuelEfficiencyInput() { return document.getElementById('fuel-efficiency'); },
     
     // Stats Globals
     get statTotalIncome() { return document.getElementById('stat-total-income'); },
@@ -225,6 +238,15 @@ function loadState() {
         generateMockupData();
         saveState();
     }
+    
+    // Garantizar que existan las configuraciones para compatibilidad con versiones anteriores
+    if (!state.settings) {
+        state.settings = {
+            valor_litro_bencina: 1300,
+            rendimiento_promedio: 12
+        };
+    }
+    state.calculatedFuel = {}; // Inicializar caché vacío en cada carga
 }
 
 // Save state to local storage
@@ -454,6 +476,12 @@ function setupEventListeners() {
     elements.filterType.addEventListener('change', renderFullTransactionsTable);
     elements.filterCategory.addEventListener('change', renderFullTransactionsTable);
 
+    // Fuel Settings Form Submit
+    elements.fuelSettingsForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        saveFuelSettings();
+    });
+
     // Reset Data Button
     elements.btnClearData.addEventListener('click', () => {
         if (confirm('¿Estás seguro de que deseas restablecer TODOS los datos? Esto borrará el historial y restaurará los datos de prueba.')) {
@@ -527,6 +555,75 @@ function saveCustomTransaction() {
     showToast(`Transacción por ${formatCurrency(amount)} guardada`, 'success');
 }
 
+// Save Fuel Settings from form
+function saveFuelSettings() {
+    const price = parseInt(elements.fuelPriceLiterInput.value, 10) || 1300;
+    const efficiency = parseFloat(elements.fuelEfficiencyInput.value) || 12;
+    
+    state.settings = {
+        valor_litro_bencina: price,
+        rendimiento_promedio: efficiency
+    };
+    
+    saveState();
+    updateUI();
+    showToast('Parámetros de combustible guardados y saldos proyectados actualizados.', 'success');
+}
+
+// Get all unique active dates sorted chronologically
+function getSortedActivityDates() {
+    const dates = new Set();
+    state.transactions.forEach(t => dates.add(t.fecha));
+    Object.keys(state.mileage).forEach(d => dates.add(d));
+    return Array.from(dates).sort();
+}
+
+// Chronological sweep calculation for fuel inventory and carryover surplus
+function updateFuelCalculations() {
+    const sortedDates = getSortedActivityDates();
+    let carryover = 0;
+    state.calculatedFuel = {}; // reset runtime cache
+    
+    const valorLitro = state.settings.valor_litro_bencina;
+    const rendimiento = state.settings.rendimiento_promedio;
+    
+    sortedDates.forEach(dateStr => {
+        // 1. Get actual fuel purchased (transactions)
+        const dayTxs = state.transactions.filter(t => t.fecha === dateStr);
+        const purchased = dayTxs
+            .filter(t => t.tipo === 'gasto' && t.categoria === 'Bencina')
+            .reduce((sum, t) => sum + t.monto, 0);
+            
+        // 2. Get mileage log
+        const dayMileage = state.mileage[dateStr];
+        let distance = 0;
+        if (dayMileage && dayMileage.km_final > dayMileage.km_inicial) {
+            distance = dayMileage.km_final - dayMileage.km_inicial;
+        }
+        
+        // 3. Calculated consumption
+        const consumed = rendimiento > 0 ? (distance / rendimiento) * valorLitro : 0;
+        
+        // 4. Available fuel
+        const available = purchased + carryover;
+        
+        // 5. Surplus to carry over
+        const surplusNext = Math.max(0, available - consumed);
+        
+        // Save to runtime cache
+        state.calculatedFuel[dateStr] = {
+            purchased,
+            distance,
+            consumed: Math.round(consumed),
+            surplusPrevious: Math.round(carryover),
+            surplusNext: Math.round(surplusNext)
+        };
+        
+        // Carry over to next day
+        carryover = surplusNext;
+    });
+}
+
 // Save or Update Daily Mileage
 function saveMileageLog() {
     const todayStr = getTodayString();
@@ -549,25 +646,47 @@ function saveMileageLog() {
     showToast('Kilometraje diario guardado correctamente.', 'success');
 }
 
+// Helper to get carryover fuel surplus from the latest active date before the target date
+function getCarryoverForDate(dateStr) {
+    const sortedDates = getSortedActivityDates().filter(d => d < dateStr);
+    if (sortedDates.length === 0) return 0;
+    const lastActiveDate = sortedDates[sortedDates.length - 1];
+    const fuelCalc = state.calculatedFuel[lastActiveDate];
+    return fuelCalc ? fuelCalc.surplusNext : 0;
+}
+
 // Calculate mileage and performance for today dynamically (before saving)
 function calculateActiveMileagePerformance() {
     const todayStr = getTodayString();
     const kmInitial = parseInt(elements.kmInitialInput.value, 10) || 0;
     const kmFinal = parseInt(elements.kmFinalInput.value, 10) || 0;
     
-    // Sum fuel cost of today
-    const fuelCostToday = state.transactions
-        .filter(t => t.fecha === todayStr && t.tipo === 'gasto' && t.categoria === 'Bencina')
-        .reduce((sum, t) => sum + t.monto, 0);
-        
-    elements.summaryFuelCost.innerText = formatCurrency(fuelCostToday);
-    
     const distance = kmFinal > kmInitial ? (kmFinal - kmInitial) : 0;
     elements.summaryDistance.innerText = `${distance} km`;
     
-    if (distance > 0 && fuelCostToday > 0) {
-        const perf = Math.round(fuelCostToday / distance);
-        elements.summaryCostPerKm.innerText = `${formatCurrency(perf)}/km`;
+    // Get carryover from previous active days
+    const carryover = getCarryoverForDate(todayStr);
+    elements.summaryFuelCarryover.innerText = formatCurrency(carryover);
+    
+    // Get actual fuel purchased today (transactions of today)
+    const todayTxs = state.transactions.filter(t => t.fecha === todayStr);
+    const purchased = todayTxs
+        .filter(t => t.tipo === 'gasto' && t.categoria === 'Bencina')
+        .reduce((sum, t) => sum + t.monto, 0);
+    elements.summaryFuelPurchased.innerText = formatCurrency(purchased);
+    
+    // Calculate consumption
+    const consumed = state.settings.rendimiento_promedio > 0 ? (distance / state.settings.rendimiento_promedio) * state.settings.valor_litro_bencina : 0;
+    elements.summaryFuelCost.innerText = formatCurrency(Math.round(consumed));
+    
+    // Calculate projected surplus for tomorrow
+    const surplusNext = Math.max(0, carryover + purchased - consumed);
+    elements.summaryFuelSurplus.innerText = formatCurrency(Math.round(surplusNext));
+    
+    // Calculate Cost per Km
+    if (distance > 0) {
+        const costPerKm = Math.round(state.settings.valor_litro_bencina / state.settings.rendimiento_promedio);
+        elements.summaryCostPerKm.innerText = `${formatCurrency(costPerKm)}/km`;
     } else {
         elements.summaryCostPerKm.innerText = '$0/km';
     }
@@ -575,6 +694,15 @@ function calculateActiveMileagePerformance() {
 
 // Recalculate all numbers and redraw UI elements
 function updateUI() {
+    // 1. Recalcular balances de combustible cronológicamente
+    updateFuelCalculations();
+    
+    // 2. Cargar configuraciones de bencina en los inputs del formulario
+    if (elements.fuelPriceLiterInput && elements.fuelEfficiencyInput) {
+        elements.fuelPriceLiterInput.value = state.settings.valor_litro_bencina;
+        elements.fuelEfficiencyInput.value = state.settings.rendimiento_promedio;
+    }
+    
     const todayStr = getTodayString();
     
     // Load current day's mileage log into form
@@ -621,27 +749,18 @@ function updateUI() {
     }
     
     // Fuel Performance KPI for today
-    const fuelCostToday = todayExpenseTxs.filter(t => t.categoria === 'Bencina').reduce((sum, t) => sum + t.monto, 0);
-    const kmLog = state.mileage[todayStr];
-    let distanceToday = 0;
-    if (kmLog && kmLog.km_final > kmLog.km_inicial) {
-        distanceToday = kmLog.km_final - kmLog.km_inicial;
-    }
+    const fuelCalcToday = state.calculatedFuel[todayStr] || {
+        purchased: 0,
+        consumed: 0,
+        surplusPrevious: 0,
+        surplusNext: 0
+    };
     
-    if (distanceToday > 0 && fuelCostToday > 0) {
-        const perf = Math.round(fuelCostToday / distanceToday);
-        elements.kpiFuelPerf.innerText = `${formatCurrency(perf)}/km`;
-        elements.kpiFuelSubtext.innerText = `Bencina: ${formatCurrency(fuelCostToday)} en ${distanceToday} km`;
-    } else {
-        elements.kpiFuelPerf.innerText = '$0/km';
-        if (distanceToday === 0) {
-            elements.kpiFuelSubtext.innerText = 'Requiere kilometraje final';
-        } else if (fuelCostToday === 0) {
-            elements.kpiFuelSubtext.innerText = 'Sin gasto bencina hoy';
-        } else {
-            elements.kpiFuelSubtext.innerText = 'Faltan datos de hoy';
-        }
-    }
+    const kpiFuelTitle = document.querySelector('.kpi-card.fuel-perf h3');
+    if (kpiFuelTitle) kpiFuelTitle.innerText = 'Saldo Combustible';
+    
+    elements.kpiFuelPerf.innerText = formatCurrency(fuelCalcToday.surplusNext);
+    elements.kpiFuelSubtext.innerText = `Consumo: ${formatCurrency(fuelCalcToday.consumed)} | Heredado: ${formatCurrency(fuelCalcToday.surplusPrevious)}`;
     
     // Refresh calculations inside mileage card box
     calculateActiveMileagePerformance();
@@ -797,7 +916,7 @@ function renderMileageTable() {
     if (dates.length === 0) {
         elements.mileageTableBody.innerHTML = `
             <tr>
-                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 3rem;">
                     No hay registros de kilometraje guardados.
                 </td>
             </tr>
@@ -811,19 +930,13 @@ function renderMileageTable() {
         const kmFin = log.km_final || 0;
         const dist = kmFin > kmIn ? (kmFin - kmIn) : 0;
         
-        // Sum fuel expenses of that day
-        const dayFuel = state.transactions
-            .filter(t => t.fecha === dateStr && t.tipo === 'gasto' && t.categoria === 'Bencina')
-            .reduce((sum, t) => sum + t.monto, 0);
-            
-        let perfStr = '$0/km';
-        if (dist > 0 && dayFuel > 0) {
-            perfStr = `${formatCurrency(Math.round(dayFuel / dist))}/km`;
-        } else if (dist > 0) {
-            perfStr = 'Sin bencina registrada';
-        } else {
-            perfStr = 'Falta km final';
-        }
+        // Get calculations from chronological fuel sweep
+        const fuelCalc = state.calculatedFuel[dateStr] || {
+            purchased: 0,
+            consumed: 0,
+            surplusPrevious: 0,
+            surplusNext: 0
+        };
         
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -831,8 +944,10 @@ function renderMileageTable() {
             <td>${kmIn.toLocaleString('es-CL')} km</td>
             <td>${kmFin > 0 ? kmFin.toLocaleString('es-CL') + ' km' : '<span class="text-muted">No cerrado</span>'}</td>
             <td><span class="badge ${dist > 0 ? 'income' : 'expense'}">${dist} km</span></td>
-            <td>${formatCurrency(dayFuel)}</td>
-            <td style="font-weight: 700; color: var(--warning);">${perfStr}</td>
+            <td>${formatCurrency(fuelCalc.purchased)}</td>
+            <td style="color: var(--warning); font-weight: 500;">${formatCurrency(fuelCalc.consumed)}</td>
+            <td style="color: var(--primary);">${formatCurrency(fuelCalc.surplusPrevious)}</td>
+            <td style="color: var(--success); font-weight: 600;">${formatCurrency(fuelCalc.surplusNext)}</td>
         `;
         
         elements.mileageTableBody.appendChild(row);
@@ -1251,15 +1366,22 @@ function selectCalendarDay(dateStr) {
             </div>
     `;
     
+    const fuelCalc = state.calculatedFuel[dateStr] || {
+        purchased: 0,
+        consumed: 0,
+        surplusPrevious: 0,
+        surplusNext: 0
+    };
+    
     if (distance > 0) {
         htmlContent += `
             <div class="stat-box">
                 <span class="stat-label">Km Recorridos</span>
                 <span class="stat-number text-primary">${distance} km</span>
             </div>
-            <div class="stat-box metric-row-full">
-                <span class="stat-label">Rendimiento Combustible</span>
-                <span class="stat-number text-warning">${perfStr}</span>
+            <div class="stat-box">
+                <span class="stat-label">Costo por Km</span>
+                <span class="stat-number text-warning">${state.settings.rendimiento_promedio > 0 ? formatCurrency(Math.round(state.settings.valor_litro_bencina / state.settings.rendimiento_promedio)) : '$0'}/km</span>
             </div>
         `;
     } else if (kmIn > 0) {
@@ -1267,6 +1389,33 @@ function selectCalendarDay(dateStr) {
             <div class="stat-box metric-row-full" style="background: rgba(245, 158, 11, 0.05); border-color: rgba(245, 158, 11, 0.2);">
                 <span class="stat-label" style="color: var(--warning);">Kilometraje Incompleto</span>
                 <span class="stat-number" style="font-size: 1.1rem; color: var(--text-primary);">Iniciado en ${kmIn.toLocaleString('es-CL')} km. Falta registrar cierre.</span>
+            </div>
+        `;
+    }
+
+    // Agregar sección de balance de combustible si hubo actividad
+    if (fuelCalc.purchased > 0 || fuelCalc.surplusPrevious > 0 || distance > 0) {
+        htmlContent += `
+            <div class="stat-box metric-row-full" style="background: rgba(16, 185, 129, 0.04); border-color: rgba(16, 185, 129, 0.15); display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; padding: 1rem; margin-top: 0.5rem; text-align: left;">
+                <h4 style="grid-column: span 2; margin: 0; font-size: 0.85rem; font-weight: 700; color: var(--success); display: flex; align-items: center; gap: 0.35rem;">
+                    <i data-lucide="fuel" style="width: 14px; height: 14px; color: var(--success);"></i> BALANCE DE COMBUSTIBLE
+                </h4>
+                <div>
+                    <span class="stat-label" style="font-size: 0.7rem; display: block; margin-bottom: 0.15rem;">Saldo Inicial (Heredado):</span>
+                    <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-primary);">${formatCurrency(fuelCalc.surplusPrevious)}</span>
+                </div>
+                <div>
+                    <span class="stat-label" style="font-size: 0.7rem; display: block; margin-bottom: 0.15rem;">Compra del Día (Real):</span>
+                    <span style="font-size: 0.95rem; font-weight: 500; color: var(--text-primary);">${formatCurrency(fuelCalc.purchased)}</span>
+                </div>
+                <div>
+                    <span class="stat-label" style="font-size: 0.7rem; display: block; margin-bottom: 0.15rem;">Consumo Estimado (Hoy):</span>
+                    <span style="font-size: 0.95rem; font-weight: 500; color: var(--warning);">${formatCurrency(fuelCalc.consumed)}</span>
+                </div>
+                <div>
+                    <span class="stat-label" style="font-size: 0.7rem; display: block; margin-bottom: 0.15rem; color: var(--success); font-weight: 600;">Saldo Proyectado Mañana:</span>
+                    <span style="font-size: 0.95rem; font-weight: 700; color: var(--success);">${formatCurrency(fuelCalc.surplusNext)}</span>
+                </div>
             </div>
         `;
     }

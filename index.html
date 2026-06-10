@@ -163,8 +163,20 @@
                                     <span class="value" id="summary-distance">0 km</span>
                                 </div>
                                 <div class="summary-item">
-                                    <span class="label">Costo Bencina Hoy:</span>
+                                    <span class="label">Saldo Bencina Anterior:</span>
+                                    <span class="value" id="summary-fuel-carryover">$0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">Compra Bencina Hoy:</span>
+                                    <span class="value" id="summary-fuel-purchased">$0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">Consumo de Bencina Hoy:</span>
                                     <span class="value" id="summary-fuel-cost">$0</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="label">Saldo para Mañana:</span>
+                                    <span class="value" id="summary-fuel-surplus" style="color: var(--success); font-weight: 600;">$0</span>
                                 </div>
                                 <div class="summary-item highlighted">
                                     <span class="label">Costo por Km:</span>
@@ -256,9 +268,37 @@
 
             <!-- Mileage Tab -->
             <div id="tab-mileage" class="tab-content">
+                <!-- Fuel Settings Card -->
+                <div class="grid-card full-width" style="margin-bottom: 1.5rem;">
+                    <h2>Configuración de Combustible</h2>
+                    <p class="text-muted">Configura los valores de bencina y rendimiento para automatizar el cálculo de consumo diario y traspaso de saldos.</p>
+                    <form id="fuel-settings-form" style="margin-top: 1.25rem;">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="fuel-price-liter">Valor por Litro de Bencina ($/L)</label>
+                                <div class="input-icon-wrapper">
+                                    <i data-lucide="dollar-sign"></i>
+                                    <input type="number" id="fuel-price-liter" placeholder="Ej. 1300" min="0" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="fuel-efficiency">Rendimiento Promedio (km/L)</label>
+                                <div class="input-icon-wrapper">
+                                    <i data-lucide="fuel"></i>
+                                    <input type="number" id="fuel-efficiency" placeholder="Ej. 12" min="1" step="0.1" required>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">
+                            <i data-lucide="save"></i> Guardar Parámetros
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Mileage History Card -->
                 <div class="grid-card full-width">
-                    <h2>Historial de Kilometraje y Rendimiento</h2>
-                    <p class="text-muted">A continuación se detallan los registros diarios de kilometraje y el costo correspondiente de bencina por kilómetro.</p>
+                    <h2>Historial de Kilometraje y Balance de Combustible</h2>
+                    <p class="text-muted">Detalle de kilómetros recorridos, consumo de combustible estimado y saldos de bencina proyectados al día siguiente.</p>
                     <div class="table-container mt-4">
                         <table class="data-table">
                             <thead>
@@ -266,9 +306,11 @@
                                     <th>Fecha</th>
                                     <th>Km Inicial</th>
                                     <th>Km Final</th>
-                                    <th>Distancia Recorrida</th>
-                                    <th>Gasto Bencina</th>
-                                    <th>Costo de Bencina por Km</th>
+                                    <th>Distancia</th>
+                                    <th>Compra Real ($)</th>
+                                    <th>Consumo Est. ($)</th>
+                                    <th>Saldo Inicial ($)</th>
+                                    <th>Saldo Final ($)</th>
                                 </tr>
                             </thead>
                             <tbody id="mileage-history-table-body">
