@@ -25,5 +25,5 @@
 - [x] Actualizar el cálculo activo de consumo y saldo de combustible usando valores en tiempo real de la interfaz
 - [x] Eliminar la generación de datos de prueba de días históricos en `generateMockupData()`
 - [x] Implementar la limpieza de datos en el navegador del usuario al cargar la página (preservando solo hoy)
-- [ ] Subir cambios al repositorio de GitHub y redesplegar en el VPS de Oracle
-- [ ] Verificar el sitio web y cerrar el objetivo
+- [x] Subir cambios al repositorio de GitHub y redesplegar en el VPS de Oracle
+- [x] Verificar el sitio web y cerrar el objetivo
