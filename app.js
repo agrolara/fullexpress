@@ -229,45 +229,57 @@ function showToast(message, type = 'info') {
     }, 3500);
 }
 
-// Load state from local storage or generate high-fidelity mock data if empty
+// Load state from local storage or start fresh
 function loadState() {
     const savedState = localStorage.getItem('radiotaxi_state');
     if (savedState) {
         state = JSON.parse(savedState);
     } else {
-        generateMockupData();
-        saveState();
+        // Estado completamente vacío para empezar limpio
+        state.transactions = [];
+        state.mileage = {};
     }
     
     // Garantizar que existan las configuraciones válidas para evitar NaN o errores
-    if (!state.settings || 
-        typeof state.settings.valor_litro_bencina === 'undefined' || 
-        typeof state.settings.rendimiento_promedio === 'undefined' ||
-        isNaN(state.settings.valor_litro_bencina) || 
-        isNaN(state.settings.rendimiento_promedio) || 
-        state.settings.valor_litro_bencina === null || 
-        state.settings.rendimiento_promedio === null ||
-        state.settings.valor_litro_bencina <= 0 || 
-        state.settings.rendimiento_promedio <= 0) {
-        
+    const s = state.settings;
+    if (!s || !s.valor_litro_bencina || !s.rendimiento_promedio ||
+        isNaN(Number(s.valor_litro_bencina)) || isNaN(Number(s.rendimiento_promedio)) ||
+        Number(s.valor_litro_bencina) <= 0 || Number(s.rendimiento_promedio) <= 0) {
         state.settings = {
             valor_litro_bencina: 1300,
             rendimiento_promedio: 12
         };
+    } else {
+        // Forzar a número limpio
+        state.settings.valor_litro_bencina = Number(state.settings.valor_litro_bencina);
+        state.settings.rendimiento_promedio = Number(state.settings.rendimiento_promedio);
     }
-    state.calculatedFuel = {}; // Inicializar caché vacío en cada carga
+    state.calculatedFuel = {};
     
-    // Ejecutar limpieza única para remover datos de prueba históricos de versiones anteriores
-    if (localStorage.getItem('radiotaxi_mock_data_cleaned') !== 'true') {
-        const todayStr = getTodayString();
-        state.transactions = state.transactions.filter(t => t.fecha === todayStr);
+    // Limpiar datos de prueba/mock de días que no son hoy
+    // Se ejecuta en CADA carga para garantizar limpieza total
+    const todayStr = getTodayString();
+    const hadOldData = state.transactions.some(t => t.fecha !== todayStr) ||
+                       Object.keys(state.mileage).some(d => d !== todayStr);
+    if (hadOldData) {
+        // Eliminar transacciones de días anteriores que sean datos de prueba (IDs con 'mock' o 'today-')
+        state.transactions = state.transactions.filter(t => {
+            // Mantener solo transacciones de hoy, o transacciones reales de otros días
+            if (t.fecha === todayStr) return true;
+            // Eliminar datos mock/prueba de cualquier día
+            if (t.id && (t.id.includes('mock') || t.id.includes('tx-today-'))) return false;
+            // Mantener datos reales de otros días
+            return true;
+        });
+        // Eliminar kilometraje de días pasados que tengan valores de prueba (km_inicial de 120500-121520)
         for (const date in state.mileage) {
             if (date !== todayStr) {
-                delete state.mileage[date];
+                const log = state.mileage[date];
+                const isMock = log.km_inicial >= 120500 && log.km_inicial <= 121520;
+                if (isMock) delete state.mileage[date];
             }
         }
         saveState();
-        localStorage.setItem('radiotaxi_mock_data_cleaned', 'true');
     }
 }
 
@@ -276,41 +288,17 @@ function saveState() {
     localStorage.setItem('radiotaxi_state', JSON.stringify(state));
 }
 
-// Seed the state with 6 days of realistic data for impressive charts
+// Restablecer el estado a un punto limpio (sin datos de prueba)
 function generateMockupData() {
-    const mockTxs = [];
-    const mockMileage = {};
-    const todayStr = getTodayString();
-    
-    // Add 2 simple entries for today to show immediate state
-    mockTxs.push({
-        id: `tx-today-1`,
-        fecha: todayStr,
-        hora: '09:30',
-        tipo: 'ingreso',
-        categoria: 'Viaje',
-        monto: 3000,
-        descripcion: 'Viaje rápido'
-    });
-    mockTxs.push({
-        id: `tx-today-2`,
-        fecha: todayStr,
-        hora: '11:15',
-        tipo: 'ingreso',
-        categoria: 'Viaje',
-        monto: 2500,
-        descripcion: 'Viaje rápido'
-    });
-    
-    // Set mileage initial for today
-    mockMileage[todayStr] = {
-        fecha: todayStr,
-        km_inicial: 121520,
-        km_final: 0
-    };
-
-    state.transactions = mockTxs;
-    state.mileage = mockMileage;
+    state.transactions = [];
+    state.mileage = {};
+    // Mantener las configuraciones de combustible actuales si existen
+    if (!state.settings || !state.settings.valor_litro_bencina || !state.settings.rendimiento_promedio) {
+        state.settings = {
+            valor_litro_bencina: 1300,
+            rendimiento_promedio: 12
+        };
+    }
 }
 
 // Event Listeners Setup
@@ -435,7 +423,7 @@ function setupEventListeners() {
 
     // Reset Data Button
     elements.btnClearData.addEventListener('click', () => {
-        if (confirm('¿Estás seguro de que deseas restablecer TODOS los datos? Esto borrará el historial y restaurará los datos de prueba.')) {
+        if (confirm('¿Estás seguro de que deseas borrar TODOS los datos? Se eliminarán todas las transacciones y el historial de kilometraje.')) {
             generateMockupData();
             saveState();
             updateUI();
