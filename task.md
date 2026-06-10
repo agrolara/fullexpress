@@ -19,3 +19,11 @@
 - [x] Verificar el correcto funcionamiento y persistencia local de los cálculos
 - [x] Realizar commit, push y despliegue del contenedor actualizado en el VPS
 
+## Correcciones de Combustible y Limpieza de Datos Históricos
+- [x] Validar parámetros de combustible contra valores nulos o no numéricos en `app.js`
+- [x] Añadir escuchas de eventos en tiempo real a los inputs de valor litro y rendimiento
+- [x] Actualizar el cálculo activo de consumo y saldo de combustible usando valores en tiempo real de la interfaz
+- [x] Eliminar la generación de datos de prueba de días históricos en `generateMockupData()`
+- [x] Implementar la limpieza de datos en el navegador del usuario al cargar la página (preservando solo hoy)
+- [ ] Subir cambios al repositorio de GitHub y redesplegar en el VPS de Oracle
+- [ ] Verificar el sitio web y cerrar el objetivo

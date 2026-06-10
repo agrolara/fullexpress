@@ -239,14 +239,36 @@ function loadState() {
         saveState();
     }
     
-    // Garantizar que existan las configuraciones para compatibilidad con versiones anteriores
-    if (!state.settings) {
+    // Garantizar que existan las configuraciones válidas para evitar NaN o errores
+    if (!state.settings || 
+        typeof state.settings.valor_litro_bencina === 'undefined' || 
+        typeof state.settings.rendimiento_promedio === 'undefined' ||
+        isNaN(state.settings.valor_litro_bencina) || 
+        isNaN(state.settings.rendimiento_promedio) || 
+        state.settings.valor_litro_bencina === null || 
+        state.settings.rendimiento_promedio === null ||
+        state.settings.valor_litro_bencina <= 0 || 
+        state.settings.rendimiento_promedio <= 0) {
+        
         state.settings = {
             valor_litro_bencina: 1300,
             rendimiento_promedio: 12
         };
     }
     state.calculatedFuel = {}; // Inicializar caché vacío en cada carga
+    
+    // Ejecutar limpieza única para remover datos de prueba históricos de versiones anteriores
+    if (localStorage.getItem('radiotaxi_mock_data_cleaned') !== 'true') {
+        const todayStr = getTodayString();
+        state.transactions = state.transactions.filter(t => t.fecha === todayStr);
+        for (const date in state.mileage) {
+            if (date !== todayStr) {
+                delete state.mileage[date];
+            }
+        }
+        saveState();
+        localStorage.setItem('radiotaxi_mock_data_cleaned', 'true');
+    }
 }
 
 // Save state to local storage
@@ -258,84 +280,9 @@ function saveState() {
 function generateMockupData() {
     const mockTxs = [];
     const mockMileage = {};
-    const today = new Date();
-    
-    // Pre-populate last 6 days of records
-    for (let i = 6; i >= 1; i--) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
-        
-        // Mileage sequence starting at 120,500
-        const startKm = 120500 + (6 - i) * 165;
-        const endKm = startKm + 120 + Math.floor(Math.random() * 60); // driven 120-180 km
-        
-        mockMileage[dateStr] = {
-            fecha: dateStr,
-            km_inicial: startKm,
-            km_final: endKm
-        };
-        
-        // Add Fuel expense
-        const fuelCost = Math.random() > 0.3 ? 15000 : 10000;
-        mockTxs.push({
-            id: `tx-mock-fuel-${i}`,
-            fecha: dateStr,
-            hora: '08:15',
-            tipo: 'gasto',
-            categoria: 'Bencina',
-            monto: fuelCost,
-            descripcion: 'Carga de bencina matutina'
-        });
-        
-        // Add Food expense
-        if (Math.random() > 0.4) {
-            mockTxs.push({
-                id: `tx-mock-food-${i}`,
-                fecha: dateStr,
-                hora: '14:10',
-                tipo: 'gasto',
-                categoria: 'Comida',
-                monto: 3500 + Math.floor(Math.random() * 2000),
-                descripcion: 'Almuerzo de turno'
-            });
-        }
-
-        // Add Maintenance expense on one of the days
-        if (i === 4) {
-            mockTxs.push({
-                id: `tx-mock-maint`,
-                fecha: dateStr,
-                hora: '17:30',
-                tipo: 'gasto',
-                categoria: 'Mantenimiento',
-                monto: 12000,
-                descripcion: 'Lavado completo y ampolleta'
-            });
-        }
-        
-        // Generate daily trips (income)
-        const tripCount = 8 + Math.floor(Math.random() * 6); // 8 to 13 rides
-        for (let j = 0; j < tripCount; j++) {
-            const isQuick = Math.random() > 0.4;
-            const amount = isQuick ? (Math.random() > 0.5 ? 2500 : 3000) : (4000 + Math.floor(Math.random() * 6000));
-            const hours = String(9 + Math.floor(Math.random() * 10)).padStart(2, '0');
-            const minutes = String(Math.floor(Math.random() * 60)).padStart(2, '0');
-            
-            mockTxs.push({
-                id: `tx-mock-trip-${i}-${j}`,
-                fecha: dateStr,
-                hora: `${hours}:${minutes}`,
-                tipo: 'ingreso',
-                categoria: 'Viaje',
-                monto: amount,
-                descripcion: isQuick ? 'Viaje rápido' : 'Viaje largo por app'
-            });
-        }
-    }
+    const todayStr = getTodayString();
     
     // Add 2 simple entries for today to show immediate state
-    const todayStr = today.toISOString().split('T')[0];
     mockTxs.push({
         id: `tx-today-1`,
         fecha: todayStr,
@@ -448,6 +395,10 @@ function setupEventListeners() {
     // Recalculate mileage totals on input keyup
     elements.kmInitialInput.addEventListener('input', calculateActiveMileagePerformance);
     elements.kmFinalInput.addEventListener('input', calculateActiveMileagePerformance);
+    
+    // Recalculate when fuel settings inputs are typed in real-time
+    elements.fuelPriceLiterInput.addEventListener('input', calculateActiveMileagePerformance);
+    elements.fuelEfficiencyInput.addEventListener('input', calculateActiveMileagePerformance);
 
     // Custom Transaction Modal triggers
     elements.btnCustomTx.addEventListener('click', () => {
@@ -557,8 +508,11 @@ function saveCustomTransaction() {
 
 // Save Fuel Settings from form
 function saveFuelSettings() {
-    const price = parseInt(elements.fuelPriceLiterInput.value, 10) || 1300;
-    const efficiency = parseFloat(elements.fuelEfficiencyInput.value) || 12;
+    let price = parseInt(elements.fuelPriceLiterInput.value, 10);
+    let efficiency = parseFloat(elements.fuelEfficiencyInput.value);
+    
+    if (isNaN(price) || price <= 0) price = 1300;
+    if (isNaN(efficiency) || efficiency <= 0) efficiency = 12;
     
     state.settings = {
         valor_litro_bencina: price,
@@ -675,8 +629,12 @@ function calculateActiveMileagePerformance() {
         .reduce((sum, t) => sum + t.monto, 0);
     elements.summaryFuelPurchased.innerText = formatCurrency(purchased);
     
+    // Read price and efficiency directly from UI inputs for real-time responsiveness, falling back to state settings
+    const price = (elements.fuelPriceLiterInput && parseInt(elements.fuelPriceLiterInput.value, 10)) || state.settings.valor_litro_bencina || 1300;
+    const efficiency = (elements.fuelEfficiencyInput && parseFloat(elements.fuelEfficiencyInput.value)) || state.settings.rendimiento_promedio || 12;
+    
     // Calculate consumption
-    const consumed = state.settings.rendimiento_promedio > 0 ? (distance / state.settings.rendimiento_promedio) * state.settings.valor_litro_bencina : 0;
+    const consumed = efficiency > 0 ? (distance / efficiency) * price : 0;
     elements.summaryFuelCost.innerText = formatCurrency(Math.round(consumed));
     
     // Calculate projected surplus for tomorrow
@@ -684,8 +642,8 @@ function calculateActiveMileagePerformance() {
     elements.summaryFuelSurplus.innerText = formatCurrency(Math.round(surplusNext));
     
     // Calculate Cost per Km
-    if (distance > 0) {
-        const costPerKm = Math.round(state.settings.valor_litro_bencina / state.settings.rendimiento_promedio);
+    if (distance > 0 && efficiency > 0) {
+        const costPerKm = Math.round(price / efficiency);
         elements.summaryCostPerKm.innerText = `${formatCurrency(costPerKm)}/km`;
     } else {
         elements.summaryCostPerKm.innerText = '$0/km';
