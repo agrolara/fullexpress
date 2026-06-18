@@ -1049,6 +1049,8 @@ function saveMileageLog() {
     const kmInitial = parseInt(elements.kmInitialInput.value, 10) || 0;
     const kmFinal = parseInt(elements.kmFinalInput.value, 10) || 0;
     
+    console.log("Saving mileage log. Date selected:", selectedKmDate, "Initial:", kmInitial, "Final:", kmFinal);
+    
     if (kmFinal > 0 && kmFinal < kmInitial) {
         showToast('El kilometraje final no puede ser menor al inicial.', 'danger');
         playAudio('error');
@@ -1063,8 +1065,14 @@ function saveMileageLog() {
     };
     
     saveState();
+    
+    // Explicitly keep the datepicker set to the date we just saved to avoid any temporal UI reset
+    if (elements.kmDateInput) {
+        elements.kmDateInput.value = selectedKmDate;
+    }
+    
     updateUI();
-    showToast('Kilometraje guardado correctamente.', 'success');
+    showToast(`Kilometraje guardado correctamente para el ${formatDateString(selectedKmDate)}.`, 'success');
     
     // Audiovisual feedback
     playAudio('income');
