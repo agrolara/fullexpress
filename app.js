@@ -1986,6 +1986,13 @@ function renderCalendar() {
             cell.classList.add('selected');
             
             calendarSelectedDateStr = dateKey;
+            
+            // Sync with mileage form date picker
+            if (elements.kmDateInput) {
+                elements.kmDateInput.value = dateKey;
+                elements.kmDateInput.dispatchEvent(new Event('change'));
+            }
+            
             selectCalendarDay(dateKey);
         });
         
@@ -2063,7 +2070,12 @@ function selectCalendarDay(dateStr) {
         htmlContent += `
             <div class="stat-box">
                 <span class="stat-label">Km Recorridos</span>
-                <span class="stat-number text-primary">${distance} km</span>
+                <span class="stat-number text-primary" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                    ${distance} km
+                    <button class="mileage-edit-btn" data-date="${dateStr}" title="Editar kilometraje" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; transition: var(--transition-fast); padding: 0.1rem; display: inline-flex; align-items: center;">
+                        <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
+                    </button>
+                </span>
             </div>
             <div class="stat-box">
                 <span class="stat-label">Costo por Km</span>
@@ -2072,9 +2084,23 @@ function selectCalendarDay(dateStr) {
         `;
     } else if (kmIn > 0) {
         htmlContent += `
-            <div class="stat-box metric-row-full" style="background: rgba(245, 158, 11, 0.05); border-color: rgba(245, 158, 11, 0.2);">
-                <span class="stat-label" style="color: var(--warning);">Kilometraje Incompleto</span>
-                <span class="stat-number" style="font-size: 1.1rem; color: var(--text-primary);">Iniciado en ${kmIn.toLocaleString('es-CL')} km. Falta registrar cierre.</span>
+            <div class="stat-box metric-row-full" style="background: rgba(245, 158, 11, 0.05); border-color: rgba(245, 158, 11, 0.2); display: flex; align-items: center; justify-content: space-between; padding-right: 1rem;">
+                <div>
+                    <span class="stat-label" style="color: var(--warning);">Kilometraje Incompleto</span>
+                    <span class="stat-number" style="font-size: 1.1rem; color: var(--text-primary); margin-top: 0.15rem;">Iniciado en ${kmIn.toLocaleString('es-CL')} km. Falta registrar cierre.</span>
+                </div>
+                <button class="mileage-edit-btn" data-date="${dateStr}" title="Editar kilometraje" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; transition: var(--transition-fast); padding: 0.2rem; display: inline-flex; align-items: center;">
+                    <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+        `;
+    } else {
+        htmlContent += `
+            <div class="stat-box metric-row-full" style="background: rgba(148, 163, 184, 0.03); border-color: rgba(148, 163, 184, 0.12); display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem;">
+                <span class="stat-label" style="color: var(--text-muted); font-size: 0.8rem; margin: 0;">Sin registro de kilometraje</span>
+                <button class="mileage-edit-btn btn btn-secondary-outline btn-sm" data-date="${dateStr}" style="padding: 0.2rem 0.5rem; font-size: 0.7rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                    <i data-lucide="plus" style="width: 12px; height: 12px;"></i> Registrar
+                </button>
             </div>
         `;
     }
@@ -2162,6 +2188,13 @@ function selectCalendarDay(dateStr) {
         btn.addEventListener('click', () => {
             const id = btn.getAttribute('data-id');
             openEditTransactionModal(id);
+        });
+    });
+    
+    elements.selectedDayBody.querySelectorAll('.mileage-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dateStr = btn.getAttribute('data-date');
+            editMileageForDate(dateStr);
         });
     });
     
