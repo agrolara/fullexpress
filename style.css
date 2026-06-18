@@ -1788,3 +1788,20 @@ body {
     }
 }
 
+/* Edit action buttons */
+.tx-edit-btn, .mileage-edit-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    padding: 0.2rem;
+}
+.tx-edit-btn:hover, .mileage-edit-btn:hover {
+    color: var(--primary);
+}
+.tx-edit-btn i, .mileage-edit-btn i {
+    width: 14px;
+    height: 14px;
+}
+

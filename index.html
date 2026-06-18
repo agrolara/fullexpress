@@ -155,8 +155,15 @@
 
                     <!-- Daily Mileage Control -->
                     <div class="grid-card mileage-card">
-                        <h2>Control de Kilometraje de Hoy</h2>
+                        <h2 id="mileage-card-title">Control de Kilometraje de Hoy</h2>
                         <form id="mileage-form" class="mileage-form">
+                            <div class="form-group" style="margin-bottom: 1rem;">
+                                <label for="km-date">Fecha de Registro</label>
+                                <div class="input-icon-wrapper">
+                                    <i data-lucide="calendar"></i>
+                                    <input type="date" id="km-date" required>
+                                </div>
+                            </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="km-initial">Kilometraje Inicial</label>
@@ -407,6 +414,7 @@
                                     <th>Consumo Est. ($)</th>
                                     <th>Saldo Inicial ($)</th>
                                     <th>Saldo Final ($)</th>
+                                    <th>Acción</th>
                                 </tr>
                             </thead>
                             <tbody id="mileage-history-table-body">
@@ -515,7 +523,7 @@
     <div class="modal-backdrop" id="tx-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Nueva Transacción</h2>
+                <h2 id="modal-title-text">Nueva Transacción</h2>
                 <button class="btn-close" id="btn-close-modal"><i data-lucide="x"></i></button>
             </div>
             <form id="custom-tx-form">

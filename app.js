@@ -53,6 +53,7 @@ let fuelPerformanceChart = null;
 // Period & PWA Global States
 let deferredPrompt = null;
 let statsActivePeriod = 'semana'; // 'semana', 'mes', 'historico'
+let editingTxId = null;
 let dashboardChartPeriod = 'week'; // 'week', 'month'
 
 // DOM Elements
@@ -155,7 +156,9 @@ const elements = {
     // Chart Toggles (Dashboard)
     get btnChartWeek() { return document.getElementById('btn-chart-week'); },
     get btnChartMonth() { return document.getElementById('btn-chart-month'); },
-    get chartTitleText() { return document.getElementById('chart-title-text'); }
+    get chartTitleText() { return document.getElementById('chart-title-text'); },
+    get kmDateInput() { return document.getElementById('km-date'); },
+    get modalTitleText() { return document.getElementById('modal-title-text'); }
 };
 
 // Initialize Application
@@ -177,6 +180,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Set modal date default to today
     elements.modalTxDate.value = getTodayString();
+    
+    // Set mileage form date default to today
+    if (elements.kmDateInput) {
+        elements.kmDateInput.value = getTodayString();
+    }
     
     // Sync settings UI checkboxes
     initSettingsUI();
@@ -638,8 +646,48 @@ function setupEventListeners() {
     elements.fuelPriceLiterInput.addEventListener('input', calculateActiveMileagePerformance);
     elements.fuelEfficiencyInput.addEventListener('input', calculateActiveMileagePerformance);
 
+    // Mileage date change event listener
+    if (elements.kmDateInput) {
+        elements.kmDateInput.addEventListener('change', () => {
+            const selectedKmDate = elements.kmDateInput.value || getTodayString();
+            
+            // Update title text dynamically
+            const isToday = (selectedKmDate === getTodayString());
+            const cardTitle = document.getElementById('mileage-card-title');
+            if (cardTitle) {
+                cardTitle.innerText = isToday ? 'Control de Kilometraje de Hoy' : `Control de Kilometraje: ${formatDateString(selectedKmDate)}`;
+            }
+            
+            // Load mileage log for selected date
+            const log = state.mileage[selectedKmDate];
+            if (log) {
+                elements.kmInitialInput.value = log.km_inicial || '';
+                elements.kmFinalInput.value = log.km_final || '';
+            } else {
+                elements.kmInitialInput.value = '';
+                elements.kmFinalInput.value = '';
+                
+                // Auto fill starting mileage with closing mileage of latest log before that date
+                const dates = Object.keys(state.mileage).filter(d => d < selectedKmDate).sort();
+                if (dates.length > 0) {
+                    const lastDate = dates[dates.length - 1];
+                    const lastLog = state.mileage[lastDate];
+                    if (lastLog && lastLog.km_final > 0) {
+                        elements.kmInitialInput.value = lastLog.km_final;
+                    }
+                }
+            }
+            calculateActiveMileagePerformance();
+            playAudio('click');
+        });
+    }
+
     // Custom Transaction Modal triggers
     elements.btnCustomTx.addEventListener('click', () => {
+        editingTxId = null;
+        if (elements.modalTitleText) {
+            elements.modalTitleText.innerText = 'Nueva Transacción';
+        }
         populateModalCategories('ingreso');
         document.getElementById('type-income').checked = true;
         elements.txModal.classList.add('active');
@@ -649,6 +697,10 @@ function setupEventListeners() {
         elements.txModal.classList.remove('active');
         elements.customTxForm.reset();
         elements.modalTxDate.value = getTodayString();
+        editingTxId = null;
+        if (elements.modalTitleText) {
+            elements.modalTitleText.innerText = 'Nueva Transacción';
+        }
     });
 
     // Toggle categories when switching type in modal
@@ -822,17 +874,34 @@ function saveCustomTransaction() {
     const date = elements.modalTxDate.value;
     const desc = elements.customTxForm.querySelector('#tx-desc').value || (type === 'ingreso' ? 'Ingreso' : 'Gasto');
     
-    const newTx = {
-        id: 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
-        fecha: date,
-        hora: getCurrentTimeStr(),
-        tipo: type,
-        categoria: category,
-        monto: amount,
-        descripcion: desc
-    };
+    let isEditing = false;
+    if (editingTxId) {
+        const txIndex = state.transactions.findIndex(t => t.id === editingTxId);
+        if (txIndex !== -1) {
+            state.transactions[txIndex].fecha = date;
+            state.transactions[txIndex].tipo = type;
+            state.transactions[txIndex].categoria = category;
+            state.transactions[txIndex].monto = amount;
+            state.transactions[txIndex].descripcion = desc;
+            isEditing = true;
+        }
+        editingTxId = null;
+        if (elements.modalTitleText) {
+            elements.modalTitleText.innerText = 'Nueva Transacción';
+        }
+    } else {
+        const newTx = {
+            id: 'tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+            fecha: date,
+            hora: getCurrentTimeStr(),
+            tipo: type,
+            categoria: category,
+            monto: amount,
+            descripcion: desc
+        };
+        state.transactions.unshift(newTx);
+    }
     
-    state.transactions.unshift(newTx);
     saveState();
     
     // Close modal
@@ -841,7 +910,12 @@ function saveCustomTransaction() {
     elements.modalTxDate.value = getTodayString();
     
     updateUI();
-    showToast(`Transacción por ${formatCurrency(amount)} guardada`, 'success');
+    
+    if (isEditing) {
+        showToast('Transacción actualizada con éxito', 'success');
+    } else {
+        showToast(`Transacción por ${formatCurrency(amount)} guardada`, 'success');
+    }
     
     // Audiovisual feedback
     if (type === 'ingreso') {
@@ -851,6 +925,41 @@ function saveCustomTransaction() {
         playAudio('expense');
         vibrate(50);
     }
+}
+
+// Open Modal to Edit an Existing Transaction
+function openEditTransactionModal(id) {
+    const tx = state.transactions.find(t => t.id === id);
+    if (!tx) return;
+    
+    editingTxId = id;
+    
+    // Set modal title to "Editar Transacción"
+    if (elements.modalTitleText) {
+        elements.modalTitleText.innerText = 'Editar Transacción';
+    }
+    
+    // Set type radio button
+    if (tx.tipo === 'ingreso') {
+        document.getElementById('type-income').checked = true;
+    } else {
+        document.getElementById('type-expense').checked = true;
+    }
+    
+    // Populate categories based on type
+    populateModalCategories(tx.tipo);
+    
+    // Pre-fill inputs
+    elements.modalTxCategory.value = tx.categoria;
+    document.getElementById('tx-amount').value = tx.monto;
+    elements.modalTxDate.value = tx.fecha;
+    document.getElementById('tx-desc').value = tx.descripcion || '';
+    
+    // Open modal
+    elements.txModal.classList.add('active');
+    
+    playAudio('click');
+    vibrate(15);
 }
 
 // Save Fuel Settings from form
@@ -936,7 +1045,7 @@ function updateFuelCalculations() {
 
 // Save or Update Daily Mileage
 function saveMileageLog() {
-    const todayStr = getTodayString();
+    const selectedKmDate = (elements.kmDateInput && elements.kmDateInput.value) || getTodayString();
     const kmInitial = parseInt(elements.kmInitialInput.value, 10) || 0;
     const kmFinal = parseInt(elements.kmFinalInput.value, 10) || 0;
     
@@ -947,15 +1056,15 @@ function saveMileageLog() {
         return;
     }
     
-    state.mileage[todayStr] = {
-        fecha: todayStr,
+    state.mileage[selectedKmDate] = {
+        fecha: selectedKmDate,
         km_inicial: kmInitial,
         km_final: kmFinal
     };
     
     saveState();
     updateUI();
-    showToast('Kilometraje diario guardado correctamente.', 'success');
+    showToast('Kilometraje guardado correctamente.', 'success');
     
     // Audiovisual feedback
     playAudio('income');
@@ -971,9 +1080,9 @@ function getCarryoverForDate(dateStr) {
     return fuelCalc ? fuelCalc.surplusNext : 0;
 }
 
-// Calculate mileage and performance for today dynamically (before saving)
+// Calculate mileage and performance dynamically (before saving)
 function calculateActiveMileagePerformance() {
-    const todayStr = getTodayString();
+    const selectedKmDate = (elements.kmDateInput && elements.kmDateInput.value) || getTodayString();
     const kmInitial = parseInt(elements.kmInitialInput.value, 10) || 0;
     const kmFinal = parseInt(elements.kmFinalInput.value, 10) || 0;
     
@@ -981,12 +1090,12 @@ function calculateActiveMileagePerformance() {
     elements.summaryDistance.innerText = `${distance} km`;
     
     // Get carryover from previous active days
-    const carryover = getCarryoverForDate(todayStr);
+    const carryover = getCarryoverForDate(selectedKmDate);
     elements.summaryFuelCarryover.innerText = formatCurrency(carryover);
     
-    // Get actual fuel purchased today (transactions of today)
-    const todayTxs = state.transactions.filter(t => t.fecha === todayStr);
-    const purchased = todayTxs
+    // Get actual fuel purchased (transactions of that day)
+    const dayTxs = state.transactions.filter(t => t.fecha === selectedKmDate);
+    const purchased = dayTxs
         .filter(t => t.tipo === 'gasto' && t.categoria === 'Bencina')
         .reduce((sum, t) => sum + t.monto, 0);
     elements.summaryFuelPurchased.innerText = formatCurrency(purchased);
@@ -1118,16 +1227,28 @@ function updateUI() {
         elements.fuelEfficiencyInput.value = state.settings.rendimiento_promedio;
     }
     
-    const todayStr = getTodayString();
+    const selectedKmDate = (elements.kmDateInput && elements.kmDateInput.value) || getTodayString();
+    if (elements.kmDateInput && !elements.kmDateInput.value) {
+        elements.kmDateInput.value = selectedKmDate;
+    }
     
-    // Load current day's mileage log into form
-    const todayMileage = state.mileage[todayStr];
-    if (todayMileage) {
-        elements.kmInitialInput.value = todayMileage.km_inicial || '';
-        elements.kmFinalInput.value = todayMileage.km_final || '';
+    // Update title text dynamically
+    const isToday = (selectedKmDate === getTodayString());
+    const cardTitle = document.getElementById('mileage-card-title');
+    if (cardTitle) {
+        cardTitle.innerText = isToday ? 'Control de Kilometraje de Hoy' : `Control de Kilometraje: ${formatDateString(selectedKmDate)}`;
+    }
+    
+    // Load selected date's mileage log into form
+    const currentMileage = state.mileage[selectedKmDate];
+    if (currentMileage) {
+        elements.kmInitialInput.value = currentMileage.km_inicial || '';
+        elements.kmFinalInput.value = currentMileage.km_final || '';
     } else {
-        // Auto fill starting mileage with yesterday's final mileage if available
-        const dates = Object.keys(state.mileage).sort();
+        elements.kmInitialInput.value = '';
+        elements.kmFinalInput.value = '';
+        // Auto fill starting mileage with the closing mileage of the latest recorded activity date prior to the selected date.
+        const dates = Object.keys(state.mileage).filter(d => d < selectedKmDate).sort();
         if (dates.length > 0) {
             const lastDate = dates[dates.length - 1];
             const lastLog = state.mileage[lastDate];
@@ -1138,6 +1259,7 @@ function updateUI() {
     }
     
     // Compute stats
+    const todayStr = getTodayString();
     const todayTxs = state.transactions.filter(t => t.fecha === todayStr);
     
     // Income KPI
@@ -1236,20 +1358,31 @@ function renderRecentTransactions() {
             </div>
             <div class="tx-amount-group">
                 <span class="tx-amount">${tx.tipo === 'ingreso' ? '+' : '-'}${formatCurrency(tx.monto)}</span>
-                <button class="tx-delete-btn" data-id="${tx.id}" title="Eliminar registro">
-                    <i data-lucide="trash-2"></i>
-                </button>
+                <div class="tx-actions-row" style="display: flex; gap: 0.5rem; margin-top: 0.2rem; align-items: center;">
+                    <button class="tx-edit-btn" data-id="${tx.id}" title="Editar registro">
+                        <i data-lucide="edit-3"></i>
+                    </button>
+                    <button class="tx-delete-btn" data-id="${tx.id}" title="Eliminar registro" style="margin-top: 0;">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                </div>
             </div>
         `;
         
         elements.recentList.appendChild(card);
     });
     
-    // Add delete listeners
+    // Add delete & edit listeners
     elements.recentList.querySelectorAll('.tx-delete-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
             const id = btn.getAttribute('data-id');
             deleteTransaction(id);
+        });
+    });
+    elements.recentList.querySelectorAll('.tx-edit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const id = btn.getAttribute('data-id');
+            openEditTransactionModal(id);
         });
     });
     
@@ -1305,7 +1438,10 @@ function renderFullTransactionsTable() {
                 ${tx.tipo === 'ingreso' ? '+' : '-'}${formatCurrency(tx.monto)}
             </td>
             <td>
-                <button class="tx-delete-btn" data-id="${tx.id}">
+                <button class="tx-edit-btn" data-id="${tx.id}" title="Editar registro" style="margin-right: 0.5rem;">
+                    <i data-lucide="edit-3"></i>
+                </button>
+                <button class="tx-delete-btn" data-id="${tx.id}" title="Eliminar registro">
                     <i data-lucide="trash-2"></i>
                 </button>
             </td>
@@ -1320,7 +1456,43 @@ function renderFullTransactionsTable() {
         });
     });
     
+    elements.fullTableBody.querySelectorAll('.tx-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            openEditTransactionModal(id);
+        });
+    });
+    
     lucide.createIcons();
+}
+
+// Edit mileage for date programmatically
+function editMileageForDate(dateStr) {
+    const dashTab = document.querySelector('[data-tab="dashboard"]');
+    if (dashTab) dashTab.click();
+    
+    if (elements.kmDateInput) {
+        elements.kmDateInput.value = dateStr;
+        elements.kmDateInput.dispatchEvent(new Event('change'));
+    }
+    
+    if (elements.mileageForm) {
+        elements.mileageForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+// Delete mileage log
+function deleteMileageLog(dateStr) {
+    if (confirm(`¿Estás seguro de que deseas eliminar el registro de kilometraje del día ${formatDateString(dateStr)}?`)) {
+        if (state.mileage[dateStr]) {
+            delete state.mileage[dateStr];
+            saveState();
+            updateUI();
+            showToast('Registro de kilometraje eliminado.', 'warning');
+            playAudio('error');
+            vibrate([100, 50, 100]);
+        }
+    }
 }
 
 // Render mileage history table
@@ -1333,7 +1505,7 @@ function renderMileageTable() {
     if (dates.length === 0) {
         elements.mileageTableBody.innerHTML = `
             <tr>
-                <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 3rem;">
+                <td colspan="9" style="text-align: center; color: var(--text-muted); padding: 3rem;">
                     No hay registros de kilometraje guardados.
                 </td>
             </tr>
@@ -1365,10 +1537,34 @@ function renderMileageTable() {
             <td style="color: var(--warning); font-weight: 500;">${formatCurrency(fuelCalc.consumed)}</td>
             <td style="color: var(--primary);">${formatCurrency(fuelCalc.surplusPrevious)}</td>
             <td style="color: var(--success); font-weight: 600;">${formatCurrency(fuelCalc.surplusNext)}</td>
+            <td>
+                <button class="mileage-edit-btn" data-date="${dateStr}" title="Editar kilometraje" style="margin-right: 0.5rem;">
+                    <i data-lucide="edit-3"></i>
+                </button>
+                <button class="tx-delete-btn mileage-delete-btn" data-date="${dateStr}" title="Eliminar kilometraje" style="margin-top: 0;">
+                    <i data-lucide="trash-2"></i>
+                </button>
+            </td>
         `;
         
         elements.mileageTableBody.appendChild(row);
     });
+    
+    elements.mileageTableBody.querySelectorAll('.mileage-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dateStr = btn.getAttribute('data-date');
+            editMileageForDate(dateStr);
+        });
+    });
+    
+    elements.mileageTableBody.querySelectorAll('.mileage-delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dateStr = btn.getAttribute('data-date');
+            deleteMileageLog(dateStr);
+        });
+    });
+    
+    lucide.createIcons();
 }
 
 // Calculate global metrics and render stats page details
@@ -1937,9 +2133,14 @@ function selectCalendarDay(dateStr) {
                     </div>
                     <div class="tx-amount-group">
                         <span class="tx-amount">${tx.tipo === 'ingreso' ? '+' : '-'}${formatCurrency(tx.monto)}</span>
-                        <button class="tx-delete-btn" data-id="${tx.id}">
-                            <i data-lucide="trash-2"></i>
-                        </button>
+                        <div class="tx-actions-row" style="display: flex; gap: 0.5rem; margin-top: 0.2rem; align-items: center;">
+                            <button class="tx-edit-btn" data-id="${tx.id}" title="Editar registro">
+                                <i data-lucide="edit-3"></i>
+                            </button>
+                            <button class="tx-delete-btn" data-id="${tx.id}" title="Eliminar registro" style="margin-top: 0;">
+                                <i data-lucide="trash-2"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `;
@@ -1950,11 +2151,17 @@ function selectCalendarDay(dateStr) {
     
     elements.selectedDayBody.innerHTML = htmlContent;
     
-    // Add delete action to list buttons
+    // Add delete & edit action to list buttons
     elements.selectedDayBody.querySelectorAll('.tx-delete-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const id = btn.getAttribute('data-id');
             deleteTransaction(id);
+        });
+    });
+    elements.selectedDayBody.querySelectorAll('.tx-edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            openEditTransactionModal(id);
         });
     });
     
